@@ -146,6 +146,150 @@ describe('Adversarial Security & Robustness Audit', () => {
       expect(res3.errorResponse?.status).toBe(429);
       expect(res3.errorResponse?.headers.get('Retry-After')).toBeDefined();
     });
+
+    it('rejects oversized body even when Content-Length header is absent (stream size capping)', async () => {
+      const largePayload = JSON.stringify({
+        ...baseEvent,
+        theme: 'X'.repeat(300 * 1024), // ~300 KB payload
+      });
+      const req = new NextRequest('http://localhost:3000/api/ai/plan', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          // No Content-Length header
+        },
+        body: largePayload,
+      });
+
+      const { data, errorResponse } = await validateAIRequest(req, EventDetailsSchema, {
+        maxBytes: 256 * 1024,
+      });
+      expect(data).toBeUndefined();
+      expect(errorResponse).toBeDefined();
+      expect(errorResponse?.status).toBe(413);
+      const json = await errorResponse?.json();
+      expect(json.error).toContain('Payload Too Large');
+    });
+
+    it('rejects oversized body when Content-Length header is understated', async () => {
+      const largePayload = JSON.stringify({
+        ...baseEvent,
+        theme: 'Y'.repeat(300 * 1024),
+      });
+      const req = new NextRequest('http://localhost:3000/api/ai/plan', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Content-Length': '42', // Deliberately understated
+        },
+        body: largePayload,
+      });
+
+      const { data, errorResponse } = await validateAIRequest(req, EventDetailsSchema, {
+        maxBytes: 256 * 1024,
+      });
+      expect(data).toBeUndefined();
+      expect(errorResponse).toBeDefined();
+      expect(errorResponse?.status).toBe(413);
+    });
+
+    it('rejects invalid or malformed Content-Length header with HTTP 400 Bad Request', async () => {
+      const req = new NextRequest('http://localhost:3000/api/ai/plan', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Content-Length': '-100', // Negative / malformed
+        },
+        body: JSON.stringify(baseEvent),
+      });
+
+      const { data, errorResponse } = await validateAIRequest(req, EventDetailsSchema);
+      expect(data).toBeUndefined();
+      expect(errorResponse).toBeDefined();
+      expect(errorResponse?.status).toBe(400);
+      const json = await errorResponse?.json();
+      expect(json.error).toContain('Invalid Content-Length header');
+    });
+
+    it('prevents rate limit bypass via spoofed x-forwarded-for header injection', async () => {
+      const makeReq = (xff: string) =>
+        new NextRequest('http://localhost:3000/api/ai/plan', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-forwarded-for': xff,
+          },
+          body: JSON.stringify(baseEvent),
+        });
+
+      // Attacker tries to inject invalid IP / header smuggling tokens:
+      // resolveClientIp discards the invalid header and falls back safely
+      const maliciousReq = makeReq('evil.com, <script>alert(1)</script>, 198.51.100.10');
+      const res1 = await validateAIRequest(maliciousReq, EventDetailsSchema, { rateLimitCapacity: 1 });
+      expect(res1.errorResponse).toBeUndefined();
+
+      // Second request from same attacker trying another malformed token
+      // Because both fall back to the same trusted socket IP/fallback, second request hits rate limit
+      const maliciousReq2 = makeReq('invalid-token, 198.51.100.11');
+      const res2 = await validateAIRequest(maliciousReq2, EventDetailsSchema, { rateLimitCapacity: 1 });
+      expect(res2.errorResponse?.status).toBe(429);
+    });
+
+    it('uses rightmost trusted proxy hop when multiple forwarded IPs are present', async () => {
+      // Upstream proxy appends client IP: "spoofed-client-ip, real-client-ip"
+      // With trustedHops = 1, rightmost IP is selected for rate limiting
+      const makeMultiHopReq = (spoofedPrefix: string) =>
+        new NextRequest('http://localhost:3000/api/ai/plan', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-forwarded-for': `${spoofedPrefix}, 203.0.113.50`,
+          },
+          body: JSON.stringify(baseEvent),
+        });
+
+      // Request 1 with spoofed prefix A
+      const res1 = await validateAIRequest(makeMultiHopReq('10.0.0.1'), EventDetailsSchema, {
+        rateLimitCapacity: 1,
+        trustedHops: 1,
+      });
+      expect(res1.errorResponse).toBeUndefined();
+
+      // Request 2 with different spoofed prefix B but SAME upstream proxy IP (203.0.113.50)
+      // Must be rate limited because the rightmost verified IP was used!
+      const res2 = await validateAIRequest(makeMultiHopReq('10.0.0.2'), EventDetailsSchema, {
+        rateLimitCapacity: 1,
+        trustedHops: 1,
+      });
+      expect(res2.errorResponse).toBeDefined();
+      expect(res2.errorResponse?.status).toBe(429);
+    });
+
+    it('ignores client-supplied x-forwarded-for header when trustProxy is disabled', async () => {
+      const makeReq = (ip: string) =>
+        new NextRequest('http://localhost:3000/api/ai/plan', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-forwarded-for': ip,
+          },
+          body: JSON.stringify(baseEvent),
+        });
+
+      // With trustProxy: false, headers are untrusted and fall back to local IP
+      const res1 = await validateAIRequest(makeReq('198.51.100.1'), EventDetailsSchema, {
+        rateLimitCapacity: 1,
+        trustProxy: false,
+      });
+      expect(res1.errorResponse).toBeUndefined();
+
+      // Attacker changes x-forwarded-for to 198.51.100.2, but trustProxy is false
+      const res2 = await validateAIRequest(makeReq('198.51.100.2'), EventDetailsSchema, {
+        rateLimitCapacity: 1,
+        trustProxy: false,
+      });
+      expect(res2.errorResponse?.status).toBe(429);
+    });
   });
 
   describe('2. CSV Formula Injection Defense (OWASP CWE-1236)', () => {

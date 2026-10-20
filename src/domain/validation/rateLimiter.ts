@@ -2,6 +2,19 @@
  * FestiFi AI — Token Bucket Rate Limiter
  * Protects server-side AI endpoints from abuse, denial of service,
  * and runaway billable queries.
+ *
+ * ARCHITECTURAL CONSTRAINTS & DEPLOYMENT CONSIDERATIONS:
+ * 1. Single-Instance / Stateful Container Model:
+ *    This implementation maintains an in-memory Map of token buckets keyed by client identifier.
+ *    It is optimal for single-process environments, standalone Node.js servers, or stateful containers
+ *    with sticky routing.
+ * 2. Multi-Instance / Serverless Scaling (Cloud Deployments):
+ *    In multi-instance clusters (e.g. AWS ECS/EKS with multiple replicas, Vercel Serverless,
+ *    Cloudflare Workers), memory state is not shared across isolated process boundaries.
+ *    For production deployments scaling across multiple pods or serverless instances,
+ *    replace or back this store with an atomic distributed store such as:
+ *    - Redis (Upstash Redis or ioredis) using EVAL Lua scripts for atomic token consumption.
+ *    - Cloudflare KV / Durable Objects with sliding-window or token-bucket rate limiting.
  */
 
 interface Bucket {

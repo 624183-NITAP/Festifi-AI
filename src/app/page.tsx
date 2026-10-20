@@ -15,12 +15,13 @@ import {
   loadActiveEventPlanState,
   saveEventPlanState,
 } from '@/domain/persistence';
-import { deriveTasksFromEvent } from '@/domain/timeline';
+import { calculateDeadline, deriveTasksFromEvent } from '@/domain/timeline';
 import {
   BudgetOptimizationProposal,
   EventDetails,
   EventPlanState,
   ExpenseItem,
+  GeneratedEventPlan,
   TimelineTask,
   VendorRecord,
 } from '@/domain/types';
@@ -273,12 +274,52 @@ export default function FestiFiApp() {
     setStatusMessage('Updated vendor records saved.');
   };
 
-  const handleCreateNewEvent = (newEvent: EventDetails) => {
+  const handleCreateNewEvent = (
+    newEvent: EventDetails,
+    generatedPlan?: GeneratedEventPlan,
+    meta?: { provider: string; isLive: boolean }
+  ) => {
     const derivedTasks = deriveTasksFromEvent(newEvent);
 
-    setState({
-      event: newEvent,
-      expenses: [
+    let initialExpenses: ExpenseItem[] = [];
+    let initialTasks: TimelineTask[] = derivedTasks;
+    let initialIdeas: GeneratedEventPlan | null = null;
+
+    if (generatedPlan && generatedPlan.recommendedExpenses?.length > 0) {
+      initialExpenses = generatedPlan.recommendedExpenses.map((re, index) => ({
+        id: `exp-${Date.now()}-${index + 1}`,
+        categoryId: re.categoryId,
+        name: re.name,
+        estimatedCostMinor: re.estimatedCostMinor,
+        actualCostMinor: null,
+        paidMinor: 0,
+        status: 'planned' as const,
+        priority: re.priority,
+        notes: meta?.isLive
+          ? 'Live AI generated allocation (Unverified market estimate)'
+          : 'Benchmark template allocation based on guest count and regional averages',
+      }));
+
+      if (generatedPlan.recommendedTasks?.length > 0) {
+        const aiTasks: TimelineTask[] = generatedPlan.recommendedTasks.map((rt, index) => ({
+          id: `task-ai-${Date.now()}-${index + 1}`,
+          title: rt.title,
+          description: rt.description,
+          category: rt.category,
+          deadline: calculateDeadline(newEvent.targetDate, rt.daysBeforeEvent),
+          daysBeforeEvent: rt.daysBeforeEvent,
+          completed: false,
+          completedAt: null,
+          priority: rt.priority,
+          dependencies: [],
+          milestone: rt.milestone,
+        }));
+        initialTasks = [...derivedTasks, ...aiTasks];
+      }
+
+      initialIdeas = generatedPlan;
+    } else {
+      initialExpenses = [
         {
           id: `exp-${Date.now()}-1`,
           categoryId: 'venue',
@@ -312,42 +353,22 @@ export default function FestiFiApp() {
           priority: 'nice_to_have',
           notes: 'Sound, playlist, or live performers',
         },
-      ],
-      tasks: derivedTasks,
+      ];
+    }
+
+    setState({
+      event: newEvent,
+      expenses: initialExpenses,
+      tasks: initialTasks,
       vendors: [],
       activeProposal: null,
       activeScenarioImpact: null,
-      generatedIdeas: {
-        concepts: [
-          {
-            title: `Bespoke ${newEvent.title} Experience`,
-            description: `Tailored celebration concept curated specifically for ${newEvent.guestCount} guests, featuring ${newEvent.theme}.`,
-            estimatedVibe: 'Elegant & Engaging',
-            suitability: `Customized for ${newEvent.type.replace('_', ' ')} occasions.`,
-          },
-        ],
-        themes: [
-          {
-            name: `${newEvent.theme} Signature Palette`,
-            colorPalette: ['#f59e0b', '#8b5cf6', '#10b981', '#ffffff'],
-            decorIdeas: ['Illuminated centerpieces', 'Welcoming entrance arch'],
-            vibe: 'Balanced festive warmth',
-          },
-        ],
-        menu: [
-          { course: 'Main Culinary Service', item: 'Celebration Platter Selection', dietaryNotes: 'Customized for guest preferences', description: 'Fresh seasonal culinary options.' },
-        ],
-        entertainment: [
-          { type: 'Curated Entertainment Host & Audio', description: 'Professional sound system and playlist control.', estimatedCostTier: 'moderate' },
-        ],
-        recommendedTasks: [],
-        recommendedExpenses: [],
-        aiAssumptions: ['Budget allocations calculated based on target guest count and contingency ratio.'],
-      },
+      generatedIdeas: initialIdeas,
     });
 
     setActiveTab('overview');
-    setStatusMessage(`Created new celebration plan: "${newEvent.title}"`);
+    const sourceLabel = meta?.isLive ? 'Live Gemini AI' : 'Deterministic Template';
+    setStatusMessage(`Created new celebration plan for "${newEvent.title}" (${sourceLabel})`);
   };
 
   const handleOpenOptimizer = () => {

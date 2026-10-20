@@ -1,13 +1,17 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Calendar, DollarSign, Sparkles, Users, X } from 'lucide-react';
+import { AlertCircle, Calendar, DollarSign, Loader2, RefreshCw, Sparkles, Users, X } from 'lucide-react';
 import { CreateEventInputSchema } from '@/domain/schemas';
-import { CurrencyCode, EventDetails, EventType } from '@/domain/types';
+import { CurrencyCode, EventDetails, EventType, GeneratedEventPlan } from '@/domain/types';
 
 interface CreateEventModalProps {
   onClose: () => void;
-  onCreateEvent: (event: EventDetails) => void;
+  onCreateEvent: (
+    event: EventDetails,
+    plan: GeneratedEventPlan,
+    meta?: { provider: string; isLive: boolean }
+  ) => void;
 }
 
 export const CreateEventModal: React.FC<CreateEventModalProps> = ({
@@ -25,6 +29,54 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
   const [location, setLocation] = useState<string>('Civic Center Plaza');
   const [notes, setNotes] = useState<string>('Need eco-friendly catering and ADA ramp access.');
   const [formError, setFormError] = useState<string | null>(null);
+
+  // Asynchronous generation workflow states
+  const [isGenerating, setIsGenerating] = useState<boolean>(false);
+  const [generationError, setGenerationError] = useState<string | null>(null);
+  const [pendingEvent, setPendingEvent] = useState<EventDetails | null>(null);
+
+  const executePlanGeneration = async (eventToPlan: EventDetails, forceOffline: boolean = false) => {
+    setIsGenerating(true);
+    setGenerationError(null);
+
+    try {
+      if (forceOffline) {
+        // Direct offline fallback without making network request
+        const { DeterministicDemoAIProvider } = await import('@/domain/ai');
+        const demoProvider = new DeterministicDemoAIProvider();
+        const demoRes = await demoProvider.generateEventPlan(eventToPlan);
+        onCreateEvent(eventToPlan, demoRes.plan, {
+          provider: demoRes.provider,
+          isLive: false,
+        });
+        onClose();
+        return;
+      }
+
+      const res = await fetch('/api/ai/plan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(eventToPlan),
+      });
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || `Server responded with HTTP ${res.status}`);
+      }
+
+      const payload = await res.json();
+      if (!payload.success || !payload.data) {
+        throw new Error(payload.error || 'Failed to generate plan data from API');
+      }
+
+      onCreateEvent(eventToPlan, payload.data, payload.meta);
+      onClose();
+    } catch (err) {
+      console.error('Plan generation failed:', err);
+      setGenerationError(err instanceof Error ? err.message : 'An error occurred during plan generation.');
+      setIsGenerating(false);
+    }
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -67,8 +119,8 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
       updatedAt: new Date().toISOString(),
     };
 
-    onCreateEvent(newEvent);
-    onClose();
+    setPendingEvent(newEvent);
+    executePlanGeneration(newEvent);
   };
 
   const handleLoadPreset = (presetType: EventType) => {
@@ -304,16 +356,90 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
             />
           </div>
 
+          {generationError && (
+            <div
+              style={{
+                background: 'rgba(239, 68, 68, 0.12)',
+                border: '1px solid rgba(239, 68, 68, 0.35)',
+                borderRadius: '12px',
+                padding: '14px 16px',
+                marginTop: '16px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '10px',
+              }}
+              role="alert"
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#fca5a5', fontSize: '0.875rem', fontWeight: 600 }}>
+                <AlertCircle size={18} aria-hidden="true" />
+                <span>AI Plan Generation Notice: {generationError}</span>
+              </div>
+              <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => pendingEvent && executePlanGeneration(pendingEvent)}
+                  disabled={isGenerating}
+                >
+                  <RefreshCw size={14} aria-hidden="true" />
+                  <span>Retry Plan Generation</span>
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-gold btn-sm"
+                  onClick={() => pendingEvent && executePlanGeneration(pendingEvent, true)}
+                  disabled={isGenerating}
+                >
+                  <Sparkles size={14} aria-hidden="true" />
+                  <span>Use Offline Demo Template</span>
+                </button>
+              </div>
+            </div>
+          )}
+
+          {isGenerating && (
+            <div
+              style={{
+                background: 'rgba(245, 158, 11, 0.1)',
+                border: '1px solid rgba(245, 158, 11, 0.3)',
+                borderRadius: '12px',
+                padding: '14px 16px',
+                marginTop: '16px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '12px',
+                color: 'var(--accent-gold)',
+                fontSize: '0.875rem',
+              }}
+              role="status"
+              aria-live="polite"
+            >
+              <Loader2 size={20} className="animate-spin" aria-hidden="true" />
+              <span>Generating celebration concepts, milestone tasks, and itemized budget...</span>
+            </div>
+          )}
+
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '24px' }}>
             <button
               type="button"
               className="btn btn-secondary"
               onClick={onClose}
+              disabled={isGenerating}
             >
               Cancel
             </button>
-            <button type="submit" className="btn btn-gold">
-              Generate & Save Plan
+            <button type="submit" className="btn btn-gold" disabled={isGenerating}>
+              {isGenerating ? (
+                <>
+                  <Loader2 size={16} className="animate-spin" aria-hidden="true" />
+                  <span>Generating Plan...</span>
+                </>
+              ) : (
+                <>
+                  <Sparkles size={16} aria-hidden="true" />
+                  <span>Generate & Save Plan</span>
+                </>
+              )}
             </button>
           </div>
         </form>

@@ -86,8 +86,8 @@ export class DeterministicDemoAIProvider implements IAIProvider {
     return {
       inquiryMessage,
       checklistTips,
-      isAiGenerated: true,
-      providerName: this.name,
+      isAiGenerated: false,
+      providerName: 'FestiFi Deterministic Template Engine',
     };
   }
 
@@ -306,19 +306,27 @@ export class DeterministicDemoAIProvider implements IAIProvider {
  * Automatically falls back to DeterministicDemoAIProvider if offline or on network error.
  */
 export class GeminiAIProvider implements IAIProvider {
-  readonly name = 'Google Gemini 1.5 Flash';
+  readonly name: string;
   readonly isLive = true;
+  readonly model: string;
   private readonly apiKey: string;
   private readonly fallbackProvider: DeterministicDemoAIProvider;
 
-  constructor(apiKey: string) {
+  constructor(apiKey: string, model?: string) {
     this.apiKey = apiKey.trim();
+    this.model = model || process.env.GEMINI_MODEL || 'gemini-2.0-flash';
+    this.name = `Google Gemini (${this.model})`;
     this.fallbackProvider = new DeterministicDemoAIProvider();
   }
 
   async generateEventPlan(event: EventDetails): Promise<{ plan: GeneratedEventPlan; provider: string; isLive: boolean }> {
     if (!this.apiKey) {
-      return this.fallbackProvider.generateEventPlan(event);
+      const fallback = await this.fallbackProvider.generateEventPlan(event);
+      return {
+        plan: fallback.plan,
+        provider: `${this.fallbackProvider.name} (Fallback: Missing API Key)`,
+        isLive: false,
+      };
     }
 
     const prompt = `
@@ -350,7 +358,7 @@ CRITICAL INSTRUCTIONS:
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 14000); // 14s timeout
 
-      const url = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent';
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${this.model}:generateContent`;
 
       const response = await fetch(url, {
         method: 'POST',
@@ -373,14 +381,24 @@ CRITICAL INSTRUCTIONS:
 
       if (!response.ok) {
         console.warn(`Gemini API HTTP ${response.status}: Falling back to deterministic provider.`);
-        return this.fallbackProvider.generateEventPlan(event);
+        const fallback = await this.fallbackProvider.generateEventPlan(event);
+        return {
+          plan: fallback.plan,
+          provider: `${this.fallbackProvider.name} (Fallback: HTTP ${response.status})`,
+          isLive: false,
+        };
       }
 
       const data = await response.json();
       const rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
 
       if (!rawText) {
-        return this.fallbackProvider.generateEventPlan(event);
+        const fallback = await this.fallbackProvider.generateEventPlan(event);
+        return {
+          plan: fallback.plan,
+          provider: `${this.fallbackProvider.name} (Fallback: Empty Response)`,
+          isLive: false,
+        };
       }
 
       // Parse JSON safely
@@ -395,7 +413,12 @@ CRITICAL INSTRUCTIONS:
       };
     } catch (err) {
       console.warn('Gemini AI Provider encountered error, utilizing deterministic fallback safely:', err instanceof Error ? err.message : err);
-      return this.fallbackProvider.generateEventPlan(event);
+      const fallback = await this.fallbackProvider.generateEventPlan(event);
+      return {
+        plan: fallback.plan,
+        provider: `${this.fallbackProvider.name} (Fallback: Error Encountered)`,
+        isLive: false,
+      };
     }
   }
 
@@ -405,7 +428,12 @@ CRITICAL INSTRUCTIONS:
     notes?: string
   ): Promise<VendorInquiryResult> {
     // Uses fallback formatting which produces pristine, validated professional messages
-    return this.fallbackProvider.generateVendorInquiry(event, vendor, notes);
+    const res = await this.fallbackProvider.generateVendorInquiry(event, vendor, notes);
+    return {
+      ...res,
+      isAiGenerated: false,
+      providerName: `${this.fallbackProvider.name} (Template)`,
+    };
   }
 }
 
@@ -416,8 +444,9 @@ CRITICAL INSTRUCTIONS:
  */
 export function getAIProvider(): IAIProvider {
   const apiKey = process.env.GEMINI_API_KEY;
+  const model = process.env.GEMINI_MODEL;
   if (apiKey && apiKey.trim().length > 10 && !apiKey.includes('your_gemini_api_key')) {
-    return new GeminiAIProvider(apiKey);
+    return new GeminiAIProvider(apiKey, model);
   }
   return new DeterministicDemoAIProvider();
 }

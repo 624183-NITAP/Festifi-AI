@@ -153,6 +153,28 @@ export const VendorManager: React.FC<VendorManagerProps> = ({
         </button>
       </div>
 
+      {/* Demo Data Notice */}
+      <div
+        style={{
+          background: 'rgba(255, 255, 255, 0.03)',
+          border: '1px solid var(--border-subtle)',
+          borderRadius: '10px',
+          padding: '10px 14px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '10px',
+          fontSize: '0.815rem',
+          color: 'var(--text-secondary)',
+        }}
+      >
+        <span className="badge badge-optional" style={{ fontSize: '0.7rem' }}>
+          Demo Data
+        </span>
+        <span>
+          Sample vendor contacts, service profiles, and quoted prices are synthetic demonstration records for testing negotiation inquiries and budgeting workflows.
+        </span>
+      </div>
+
       {/* Vendor Table */}
       <section className="glass-card" style={{ padding: '0', borderRadius: '16px', overflow: 'hidden' }} aria-labelledby="vendors-heading">
         <h3 id="vendors-heading" className="sr-only">Vendor Directory</h3>
@@ -164,6 +186,7 @@ export const VendorManager: React.FC<VendorManagerProps> = ({
                 <th scope="col">Vendor & Category</th>
                 <th scope="col">Contact Person</th>
                 <th scope="col">Email / Phone</th>
+                <th scope="col">Quoted (Demo)</th>
                 <th scope="col">Status</th>
                 <th scope="col" style={{ textAlign: 'right' }}>Actions</th>
               </tr>
@@ -185,6 +208,18 @@ export const VendorManager: React.FC<VendorManagerProps> = ({
                     <td>
                       <div style={{ fontSize: '0.85rem' }}>{vendor.email || '—'}</div>
                       <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{vendor.phone || ''}</div>
+                    </td>
+                    <td>
+                      {vendor.quotedPriceMinor ? (
+                        <div>
+                          <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
+                            {formatCurrencyMinor(vendor.quotedPriceMinor, event.currency)}
+                          </div>
+                          <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Demo Quote</span>
+                        </div>
+                      ) : (
+                        <span style={{ color: 'var(--text-muted)' }}>—</span>
+                      )}
                     </td>
                     <td>
                       <select
@@ -227,8 +262,8 @@ export const VendorManager: React.FC<VendorManagerProps> = ({
                 ))
               ) : (
                 <tr>
-                  <td colSpan={5} style={{ textAlign: 'center', padding: '36px', color: 'var(--text-muted)' }}>
-                    No vendors recorded yet. Click "Add Vendor" to start tracking suppliers.
+                  <td colSpan={6} style={{ textAlign: 'center', padding: '36px', color: 'var(--text-muted)' }}>
+                    No vendors recorded yet. Click &quot;Add Vendor&quot; to start tracking suppliers.
                   </td>
                 </tr>
               )}
