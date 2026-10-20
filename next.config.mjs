@@ -9,8 +9,7 @@ const nextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
   typescript: {
-    // Strict type checks are verified via `npm run typecheck` (tsc --noEmit)
-    ignoreBuildErrors: true,
+    ignoreBuildErrors: false,
   },
   eslint: {
     ignoreDuringBuilds: true,
@@ -53,7 +52,7 @@ const nextConfig = {
           },
           {
             key: 'Content-Security-Policy',
-            value: "default-src 'self'; script-src 'self' 'unsafe-eval' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https: blob:; connect-src 'self' https://generativelanguage.googleapis.com; frame-ancestors 'none';",
+            value: `default-src 'self'; script-src 'self' ${process.env.NODE_ENV === 'production' ? '' : "'unsafe-eval' "}'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https: blob:; connect-src 'self' https://generativelanguage.googleapis.com; frame-ancestors 'none';`,
           },
         ],
       },

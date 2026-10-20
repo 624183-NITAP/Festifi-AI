@@ -179,7 +179,7 @@ export function calculateBudgetSummary(
   const totalCommittedMinor = plannedMinor + confirmedMinor;
   const unallocatedMinor = totalBudgetMinor - contingencyReserveMinor - totalCommittedMinor;
   const remainingMinor = totalBudgetMinor - confirmedMinor;
-  const varianceMinor = totalBudgetMinor - confirmedMinor;
+  const varianceMinor = totalBudgetMinor - totalCommittedMinor;
 
   const perPersonCostMinor = confirmedMinor > 0 ? confirmedMinor : totalCommittedMinor;
   // If guest count is 0, per-person estimate is mathematically 0
@@ -318,4 +318,28 @@ export function generateBudgetOptimization(
     status: 'pending',
     createdAt: new Date().toISOString(),
   };
+}
+
+/**
+ * Atomically applies an approved budget optimization proposal to current expenses.
+ * Safeguards against clobbering concurrent expenses added during the optimization review.
+ */
+export function applyBudgetOptimization(
+  currentExpenses: ExpenseItem[],
+  proposal: BudgetOptimizationProposal
+): ExpenseItem[] {
+  const proposedMap = new Map<string, ExpenseItem>();
+  for (const item of proposal.proposedExpenses) {
+    proposedMap.set(item.id, item);
+  }
+
+  return currentExpenses.map((item) => {
+    const proposed = proposedMap.get(item.id);
+    if (!proposed) return item; // Preserve concurrent expense unmodified
+    return {
+      ...item,
+      estimatedCostMinor: proposed.estimatedCostMinor,
+      notes: proposed.notes,
+    };
+  });
 }

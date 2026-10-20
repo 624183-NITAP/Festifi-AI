@@ -395,11 +395,29 @@ export function simulateScenario(
 
 /**
  * Atomically applies an approved scenario to the active expenses list.
+ * Preserves any concurrent items added to currentExpenses while the simulation was pending,
+ * ensuring unrelated edits are never clobbered or dropped.
  * Pure function: returns a new updated array without mutating the original.
  */
 export function applyScenarioAdjustments(
   currentExpenses: ExpenseItem[],
   scenarioImpact: ScenarioImpact
 ): ExpenseItem[] {
-  return JSON.parse(JSON.stringify(scenarioImpact.adjustedExpenses));
+  const currentMap = new Map<string, ExpenseItem>();
+  for (const item of currentExpenses) {
+    currentMap.set(item.id, { ...item });
+  }
+
+  const existingIds = new Set(currentExpenses.map((e) => e.id));
+  const newItems: ExpenseItem[] = [];
+
+  for (const proposed of scenarioImpact.adjustedExpenses) {
+    if (currentMap.has(proposed.id)) {
+      currentMap.set(proposed.id, { ...proposed });
+    } else if (!existingIds.has(proposed.id)) {
+      newItems.push({ ...proposed });
+    }
+  }
+
+  return [...Array.from(currentMap.values()), ...newItems];
 }

@@ -10,7 +10,7 @@ import {
   TrendingUp,
   Users,
 } from 'lucide-react';
-import { generateBudgetOptimization } from '@/domain/budget';
+import { applyBudgetOptimization, generateBudgetOptimization } from '@/domain/budget';
 import {
   loadActiveEventPlanState,
   saveEventPlanState,
@@ -358,7 +358,7 @@ export default function FestiFiApp() {
 
   const handleAcceptProposal = () => {
     if (!state.activeProposal) return;
-    const acceptedExpenses = JSON.parse(JSON.stringify(state.activeProposal.proposedExpenses));
+    const acceptedExpenses = applyBudgetOptimization(state.expenses, state.activeProposal);
     setState((prev) => ({
       ...prev,
       expenses: acceptedExpenses,

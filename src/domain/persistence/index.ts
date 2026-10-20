@@ -107,7 +107,14 @@ export function exportExpensesToCsv(expenses: ExpenseItem[], currency: CurrencyC
     const actualStr = item.actualCostMinor !== null ? (item.actualCostMinor / 100).toFixed(2) : '';
     const paidStr = (item.paidMinor / 100).toFixed(2);
 
-    const escapeCsv = (str: string) => `"${str.replace(/"/g, '""')}"`;
+    const escapeCsv = (str: string) => {
+      let safeStr = (str || '').replace(/"/g, '""');
+      // Neutralize CSV formula injection (OWASP CWE-1236)
+      if (/^[=+@\-\t\r]/.test(safeStr)) {
+        safeStr = `'${safeStr}`;
+      }
+      return `"${safeStr}"`;
+    };
 
     return [
       escapeCsv(item.categoryId || ''),

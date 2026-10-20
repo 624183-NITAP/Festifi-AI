@@ -1,55 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAIProvider } from '@/domain/ai';
 import { EventDetailsSchema } from '@/domain/schemas';
-import { checkRateLimit } from '@/domain/validation/rateLimiter';
+import { validateAIRequest } from '@/domain/validation/requestValidator';
 
 export async function POST(req: NextRequest) {
   try {
-    // 1. Rate limiting check
-    const clientIp = req.headers.get('x-forwarded-for')?.split(',')[0] || '127.0.0.1';
-    const rateLimit = checkRateLimit(clientIp, 20, 0.33);
+    const { data: event, errorResponse } = await validateAIRequest(req, EventDetailsSchema, {
+      rateLimitCapacity: 20,
+      refillRatePerSecond: 0.33,
+      maxBytes: 256 * 1024,
+    });
 
-    if (!rateLimit.allowed) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Rate limit exceeded. Please wait before generating another plan.',
-          retryAfter: rateLimit.resetInSeconds,
-        },
-        { status: 429, headers: { 'Retry-After': String(rateLimit.resetInSeconds) } }
-      );
+    if (errorResponse) {
+      return errorResponse;
     }
 
-    // 2. Validate payload size and parse JSON
-    let body: unknown;
-    try {
-      body = await req.json();
-    } catch {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Malformed JSON payload in request body',
-        },
-        { status: 400 }
-      );
-    }
-
-    // 3. Strict schema validation
-    const validationResult = EventDetailsSchema.safeParse(body);
-    if (!validationResult.success) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Invalid event configuration',
-          validationIssues: validationResult.error.flatten(),
-        },
-        { status: 400 }
-      );
-    }
-
-    // 4. Delegate to AI Provider
+    // Delegate to AI Provider
     const provider = getAIProvider();
-    const result = await provider.generateEventPlan(validationResult.data);
+    const result = await provider.generateEventPlan(event!);
 
     return NextResponse.json({
       success: true,

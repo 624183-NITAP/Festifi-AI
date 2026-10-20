@@ -1,46 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { generateBudgetOptimization } from '@/domain/budget';
 import { OptimizeBudgetRequestSchema } from '@/domain/schemas';
-import { checkRateLimit } from '@/domain/validation/rateLimiter';
+import { validateAIRequest } from '@/domain/validation/requestValidator';
 
 export async function POST(req: NextRequest) {
   try {
-    const clientIp = req.headers.get('x-forwarded-for')?.split(',')[0] || '127.0.0.1';
-    const rateLimit = checkRateLimit(clientIp, 30, 0.5);
+    const { data, errorResponse } = await validateAIRequest(req, OptimizeBudgetRequestSchema, {
+      rateLimitCapacity: 30,
+      refillRatePerSecond: 0.5,
+      maxBytes: 256 * 1024,
+    });
 
-    if (!rateLimit.allowed) {
-      return NextResponse.json(
-        { success: false, error: 'Rate limit exceeded. Please wait a moment.' },
-        { status: 429 }
-      );
+    if (errorResponse) {
+      return errorResponse;
     }
 
-    let body: unknown;
-    try {
-      body = await req.json();
-    } catch {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Malformed JSON payload in request body',
-        },
-        { status: 400 }
-      );
-    }
-    const validation = OptimizeBudgetRequestSchema.safeParse(body);
-
-    if (!validation.success) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Invalid budget optimization parameters',
-          details: validation.error.flatten(),
-        },
-        { status: 400 }
-      );
-    }
-
-    const { event, expenses } = validation.data;
+    const { event, expenses } = data!;
     const proposal = generateBudgetOptimization(event, expenses);
 
     return NextResponse.json({
