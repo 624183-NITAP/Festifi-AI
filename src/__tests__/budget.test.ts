@@ -37,6 +37,10 @@ describe('Budget Engine — Core Calculations & Minor Currency Units', () => {
     expect(() => parseDecimalToMinor(NaN)).toThrow();
     expect(() => parseDecimalToMinor(Infinity)).toThrow();
     expect(() => parseDecimalToMinor('invalid-cash')).toThrow();
+    expect(() => parseDecimalToMinor(null as unknown as number)).toThrow();
+    expect(() => parseDecimalToMinor(undefined as unknown as number)).toThrow();
+    expect(() => parseDecimalToMinor(true as unknown as number)).toThrow();
+    expect(() => parseDecimalToMinor(false as unknown as number)).toThrow();
   });
 
   it('accurately converts minor units back to decimal', () => {
@@ -68,6 +72,31 @@ describe('Budget Engine — Core Calculations & Minor Currency Units', () => {
     expect(summary.remainingMinor).toBe(0);
     expect(summary.perPersonEstimateMinor).toBe(0);
     expect(summary.isOverBudget).toBe(false);
+  });
+
+  it('safely handles zero guests with active expenses without division-by-zero anomaly', () => {
+    const zeroGuestEvent = {
+      totalBudgetMinor: 500000,
+      contingencyPercentage: 10,
+      guestCount: 0,
+    };
+    const expenses: ExpenseItem[] = [
+      {
+        id: 'e-zg',
+        categoryId: 'venue' as const,
+        name: 'Venue Hall',
+        estimatedCostMinor: 200000,
+        actualCostMinor: 200000,
+        paidMinor: 100000,
+        status: 'confirmed' as const,
+        priority: 'must_have' as const,
+      },
+    ];
+
+    const summary = calculateBudgetSummary(zeroGuestEvent, expenses);
+    expect(summary.confirmedMinor).toBe(200000);
+    // Since guest count is 0, perPersonEstimateMinor must be 0 rather than NaN or 200000
+    expect(summary.perPersonEstimateMinor).toBe(0);
   });
 
   it('computes planned, confirmed, paid, unallocated, and contingency reserves accurately without double counting', () => {

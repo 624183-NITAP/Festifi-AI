@@ -10,7 +10,7 @@ import { EventDetails, EventType, PriorityLevel, TimelineProgress, TimelineTask 
  * Checks if a given year is a Gregorian leap year.
  */
 export function isLeapYear(year: number): boolean {
-  if (!Number.isInteger(year)) return false;
+  if (!Number.isInteger(year) || year <= 0) return false;
   return (year % 4 === 0 && year % 100 !== 0) || year % 400 === 0;
 }
 
@@ -165,7 +165,10 @@ export function deriveTasksFromEvent(
   event: EventDetails,
   todayIso: string = new Date().toISOString().split('T')[0]
 ): TimelineTask[] {
-  const availableDays = Math.max(1, daysBetween(todayIso, event.targetDate));
+  const rawAvailable = isValidIsoDate(todayIso) && isValidIsoDate(event.targetDate)
+    ? daysBetween(todayIso, event.targetDate)
+    : 180;
+  const availableDays = Math.max(0, rawAvailable);
 
   const blueprints: Record<EventType, TaskBlueprint[]> = {
     wedding: [
@@ -236,12 +239,23 @@ export function deriveTasksFromEvent(
   const maxNormalDays = Math.max(...list.map((b) => b.daysBeforeNormal), 1);
 
   // Compress schedule gracefully if time remaining is less than standard planning cycle
-  const scale = availableDays < maxNormalDays ? (availableDays * 0.85) / maxNormalDays : 1;
+  const scale = availableDays > 0 && availableDays < maxNormalDays
+    ? (availableDays * 0.85) / maxNormalDays
+    : availableDays === 0
+    ? 0
+    : 1;
 
   return list.map((blueprint) => {
-    const scaledDaysBefore = blueprint.daysBeforeNormal === 0
+    let scaledDaysBefore = blueprint.daysBeforeNormal === 0
       ? 0
-      : Math.max(1, Math.round(blueprint.daysBeforeNormal * scale));
+      : Math.round(blueprint.daysBeforeNormal * scale);
+
+    // Ensure scaled days never pushes the deadline earlier than today when planning window is compressed
+    if (availableDays > 0) {
+      scaledDaysBefore = Math.min(availableDays, Math.max(0, scaledDaysBefore));
+    } else {
+      scaledDaysBefore = 0;
+    }
 
     const deadline = calculateDeadline(event.targetDate, scaledDaysBefore);
 

@@ -4,7 +4,7 @@
  * and high-fidelity multi-format data export (JSON, CSV, Accessible Markdown Report).
  */
 
-import { formatCurrencyMinor } from '../budget';
+import { calculateBudgetSummary, formatCurrencyMinor } from '../budget';
 import { CurrencyCode, EventPlanState, ExpenseItem } from '../types';
 
 const STORAGE_KEY_PREFIX = 'festifi_event_';
@@ -110,10 +110,10 @@ export function exportExpensesToCsv(expenses: ExpenseItem[], currency: CurrencyC
     const escapeCsv = (str: string) => `"${str.replace(/"/g, '""')}"`;
 
     return [
-      escapeCsv(item.categoryId),
-      escapeCsv(item.name),
-      escapeCsv(item.priority),
-      escapeCsv(item.status),
+      escapeCsv(item.categoryId || ''),
+      escapeCsv(item.name || ''),
+      escapeCsv(item.priority || ''),
+      escapeCsv(item.status || ''),
       estimatedStr,
       actualStr,
       paidStr,
@@ -129,9 +129,7 @@ export function exportExpensesToCsv(expenses: ExpenseItem[], currency: CurrencyC
  */
 export function exportToMarkdownSummary(state: EventPlanState): string {
   const { event, expenses, tasks } = state;
-  const totalPlanned = expenses.reduce((acc, curr) => acc + curr.estimatedCostMinor, 0);
-  const totalPaid = expenses.reduce((acc, curr) => acc + curr.paidMinor, 0);
-
+  const summary = calculateBudgetSummary(event, expenses);
   const completedTasks = tasks.filter((t) => t.completed).length;
 
   return [
@@ -142,14 +140,16 @@ export function exportToMarkdownSummary(state: EventPlanState): string {
     `**Target Date:** ${event.targetDate}`,
     `**Guest Count:** ${event.guestCount}`,
     `**Total Budget:** ${formatCurrencyMinor(event.totalBudgetMinor, event.currency)}`,
-    `**Contingency Reserve (${event.contingencyPercentage}%):** ${formatCurrencyMinor(Math.round((event.totalBudgetMinor * event.contingencyPercentage) / 100), event.currency)}`,
+    `**Contingency Reserve (${event.contingencyPercentage}%):** ${formatCurrencyMinor(summary.contingencyReserveMinor, event.currency)}`,
     ``,
     `---`,
     ``,
     `## Budget Overview`,
-    `- Total Planned Allocations: ${formatCurrencyMinor(totalPlanned, event.currency)}`,
-    `- Total Disbursed / Paid: ${formatCurrencyMinor(totalPaid, event.currency)}`,
-    `- Remaining Balance: ${formatCurrencyMinor(Math.max(0, event.totalBudgetMinor - totalPlanned), event.currency)}`,
+    `- Total Planned Allocations: ${formatCurrencyMinor(summary.plannedMinor, event.currency)}`,
+    `- Confirmed Commitments: ${formatCurrencyMinor(summary.confirmedMinor, event.currency)}`,
+    `- Total Disbursed / Paid: ${formatCurrencyMinor(summary.paidMinor, event.currency)}`,
+    `- Unallocated Funds: ${formatCurrencyMinor(summary.unallocatedMinor, event.currency)}`,
+    `- Remaining Balance: ${formatCurrencyMinor(summary.remainingMinor, event.currency)}`,
     ``,
     `### Itemized Expenses (${expenses.length} items)`,
     `| Category | Item | Priority | Status | Cost | Paid |`,

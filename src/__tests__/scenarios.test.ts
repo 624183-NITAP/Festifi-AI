@@ -132,4 +132,25 @@ describe('What-If Scenario Simulator — Deterministic Recalculations & Atomic R
     expect(acceptedExpenses.length).toBeGreaterThan(4);
     expect(acceptedExpenses.some((e) => e.isContingency)).toBe(true);
   });
+
+  it('gracefully handles an empty expense list during dietary scenario by generating fallback line item', () => {
+    const impact = simulateScenario(baseEvent, [], 'dietary_requirements');
+    expect(impact.costDeltaMinor).toBeGreaterThan(0);
+    expect(impact.adjustedExpenses.length).toBeGreaterThan(0);
+    expect(impact.adjustedExpenses[0].categoryId).toBe('catering');
+    expect(impact.summaryAfter.plannedMinor).toBeGreaterThan(0);
+  });
+
+  it('safely simulates vendor cancellation when initial expense list is empty', () => {
+    const impact = simulateScenario(baseEvent, [], 'vendor_cancellation');
+    expect(impact.costDeltaMinor).toBeGreaterThan(0);
+    expect(impact.adjustedExpenses.length).toBeGreaterThan(0);
+    expect(impact.riskLevel).toBe('high');
+  });
+
+  it('safely handles date change scenario without throwing or corrupting state', () => {
+    const impact = simulateScenario(baseEvent, initialExpenses, 'date_change', { newDate: '2026-12-25' });
+    expect(impact.scenarioType).toBe('date_change');
+    expect(impact.adjustedExpenses.length).toBeGreaterThanOrEqual(initialExpenses.length);
+  });
 });

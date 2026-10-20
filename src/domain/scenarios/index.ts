@@ -174,12 +174,20 @@ export function simulateScenario(
       }
 
       costDeltaMinor = -currentSavings;
-      recommendations.push(
-        'Must-have vendors and confirmed contracts were preserved without modification.',
-        'Consider digital invitations and simplified floral centerpieces to meet target reduction.',
-        'Negotiate off-peak playlist duration with entertainment.'
-      );
-      riskLevel = currentSavings < cutMinor ? 'high' : 'low';
+
+      if (currentSavings === 0) {
+        recommendations.push(
+          'All current items are must-haves or confirmed contracts. To achieve this budget cut, consider reducing scope or renegotiating confirmed contracts directly.'
+        );
+        riskLevel = 'high';
+      } else {
+        recommendations.push(
+          'Must-have vendors and confirmed contracts were preserved without modification.',
+          'Consider digital invitations and simplified floral centerpieces to meet target reduction.',
+          'Negotiate off-peak playlist duration with entertainment.'
+        );
+        riskLevel = currentSavings < cutMinor ? 'high' : 'low';
+      }
       break;
     }
 
@@ -255,6 +263,18 @@ export function simulateScenario(
         cateringItem.estimatedCostMinor += rushSurchargeMinor;
         cateringItem.status = 'quoted';
         cateringItem.notes = `Replacement vendor quote (includes 20% emergency rush scheduling fee)`;
+      } else {
+        adjustedExpenses.push({
+          id: `sim-rush-${Date.now()}`,
+          categoryId: 'catering',
+          name: 'Emergency Replacement Vendor (Rush Booking)',
+          estimatedCostMinor: rushSurchargeMinor,
+          actualCostMinor: null,
+          paidMinor: 0,
+          status: 'quoted',
+          priority: 'must_have',
+          notes: 'Replacement vendor quote includes rush scheduling fee',
+        });
       }
 
       proposedAdjustments.push({
@@ -321,6 +341,18 @@ export function simulateScenario(
       const cateringItem = adjustedExpenses.find((e) => e.categoryId === 'catering');
       if (cateringItem) {
         cateringItem.estimatedCostMinor += costDeltaMinor;
+      } else {
+        adjustedExpenses.push({
+          id: `sim-diet-${Date.now()}`,
+          categoryId: 'catering',
+          name: `Specialty Dietary & Allergen Catering (${specialtyGuests} custom meals)`,
+          estimatedCostMinor: costDeltaMinor,
+          actualCostMinor: null,
+          paidMinor: 0,
+          status: 'planned',
+          priority: 'must_have',
+          notes: 'Specialized dietary allergen protocol',
+        });
       }
 
       proposedAdjustments.push({

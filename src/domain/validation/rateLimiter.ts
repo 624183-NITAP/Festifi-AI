@@ -18,6 +18,26 @@ export interface RateLimitResult {
 }
 
 /**
+ * Prunes inactive buckets to prevent unbounded memory growth in long-running processes.
+ */
+function pruneStaleBuckets(now: number): void {
+  if (rateLimitBuckets.size <= 500) return;
+  const staleThreshold = 10 * 60 * 1000; // 10 minutes
+  for (const [key, bucket] of rateLimitBuckets.entries()) {
+    if (now - bucket.lastRefill > staleThreshold) {
+      rateLimitBuckets.delete(key);
+    }
+  }
+}
+
+/**
+ * Resets the in-memory rate limit store. Useful for testing environments.
+ */
+export function _resetRateLimitsForTesting(): void {
+  rateLimitBuckets.clear();
+}
+
+/**
  * Checks and consumes a token for a given client identifier (e.g., client IP).
  * @param clientId IP address or session token
  * @param capacity Maximum tokens bucket can hold (default 20)
@@ -29,6 +49,7 @@ export function checkRateLimit(
   refillRatePerSecond: number = 0.33
 ): RateLimitResult {
   const now = Date.now();
+  pruneStaleBuckets(now);
   let bucket = rateLimitBuckets.get(clientId);
 
   if (!bucket) {

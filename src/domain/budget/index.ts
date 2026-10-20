@@ -42,9 +42,13 @@ export const ALL_CATEGORIES: BudgetCategory[] = [
 
 /**
  * Converts a decimal monetary amount (e.g., 1500.50) into integer minor units (150050).
- * Safely handles strings, numbers, rejects NaN and Infinity.
+ * Safely handles strings, numbers, rejects null, undefined, booleans, NaN and Infinity.
  */
 export function parseDecimalToMinor(input: string | number): number {
+  if (input === null || input === undefined || typeof input === 'boolean') {
+    throw new Error('Invalid financial amount: null, undefined or boolean not allowed');
+  }
+
   if (typeof input === 'number') {
     if (!Number.isFinite(input) || Number.isNaN(input)) {
       throw new Error('Invalid financial amount: NaN or Infinity');
@@ -53,6 +57,10 @@ export function parseDecimalToMinor(input: string | number): number {
       throw new Error('Invalid financial amount: Negative numbers not allowed');
     }
     return Math.round(input * 100);
+  }
+
+  if (typeof input !== 'string') {
+    throw new Error('Invalid financial amount: Unsupported data type');
   }
 
   const cleaned = input.trim().replace(/[$,€£¥₹]/g, '').replace(/,/g, '');
@@ -115,13 +123,15 @@ export function formatCurrencyMinor(
 /**
  * Evaluates the effective committed cost of an expense item without double-counting.
  * If confirmed or paid, actual cost is prioritized (or estimated if actual is not set).
- * If planned or quoted, estimated cost is used.
+ * Always guarantees committed is at least the amount already paid.
  */
 export function getItemCommittedMinor(item: ExpenseItem): number {
+  const itemPaid = Math.max(0, Math.round(item.paidMinor || 0));
   if (item.status === 'confirmed' || item.status === 'paid') {
-    return item.actualCostMinor !== null ? item.actualCostMinor : item.estimatedCostMinor;
+    const base = item.actualCostMinor !== null ? item.actualCostMinor : item.estimatedCostMinor;
+    return Math.max(base, itemPaid);
   }
-  return item.estimatedCostMinor;
+  return Math.max(item.estimatedCostMinor, itemPaid);
 }
 
 /**
@@ -133,7 +143,7 @@ export function calculateBudgetSummary(
 ): BudgetSummary {
   const totalBudgetMinor = Math.max(0, Math.round(event.totalBudgetMinor));
   const contingencyPercentage = Math.max(0, Math.min(50, event.contingencyPercentage || 0));
-  const guestCount = Math.max(1, Math.round(event.guestCount || 1));
+  const actualGuests = Math.round(event.guestCount || 0);
 
   // Explicit calculation of contingency reserve
   const contingencyReserveMinor = Math.round((totalBudgetMinor * contingencyPercentage) / 100);
@@ -172,7 +182,8 @@ export function calculateBudgetSummary(
   const varianceMinor = totalBudgetMinor - confirmedMinor;
 
   const perPersonCostMinor = confirmedMinor > 0 ? confirmedMinor : totalCommittedMinor;
-  const perPersonEstimateMinor = Math.round(perPersonCostMinor / guestCount);
+  // If guest count is 0, per-person estimate is mathematically 0
+  const perPersonEstimateMinor = actualGuests > 0 ? Math.round(perPersonCostMinor / actualGuests) : 0;
   const isOverBudget = totalCommittedMinor + contingencyReserveMinor > totalBudgetMinor;
 
   const categoryBreakdown: CategoryBreakdown[] = ALL_CATEGORIES.map((categoryId) => {
@@ -220,7 +231,7 @@ export function generateBudgetOptimization(
   const summaryBefore = calculateBudgetSummary(event, expenses);
   const proposalId = `opt-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
 
-  // If already under budget and has healthy unallocated funds, generate a rebalancing optimization
+  // Evaluate required deficit to balance allocations + contingency within available budget
   const requiredBudgetWithContingency = summaryBefore.plannedMinor + summaryBefore.confirmedMinor + summaryBefore.contingencyReserveMinor;
   const deficitMinor = Math.max(0, requiredBudgetWithContingency - event.totalBudgetMinor);
 
@@ -235,37 +246,46 @@ export function generateBudgetOptimization(
     if (item.priority === 'optional' && item.status !== 'confirmed' && item.status !== 'paid') {
       const currentCost = item.estimatedCostMinor;
       if (currentCost > 0) {
-        // Cut optional item by 50% or remove if small
-        const cut = currentCost > 10000 ? Math.round(currentCost * 0.4) : currentCost;
-        item.estimatedCostMinor = Math.max(0, currentCost - cut);
-        accumulatedSavingsMinor += cut;
-        tradeoffs.push({
-          item: item.name,
-          change: cut === currentCost ? 'Omitted entirely' : `Reduced by 40%`,
-          reason: 'Optional non-critical element adjusted to relieve budget strain',
-          savingsMinor: cut,
-        });
+        const needed = deficitMinor > 0 ? deficitMinor - accumulatedSavingsMinor : currentCost;
+        const maxCut = currentCost > 10000 ? Math.round(currentCost * 0.4) : currentCost;
+        const cut = deficitMinor > 0 ? Math.min(maxCut, needed) : maxCut;
+
+        if (cut > 0) {
+          item.estimatedCostMinor = Math.max(0, currentCost - cut);
+          accumulatedSavingsMinor += cut;
+          tradeoffs.push({
+            item: item.name,
+            change: cut === currentCost ? 'Omitted entirely' : `Reduced by ${Math.round((cut / currentCost) * 100)}%`,
+            reason: 'Optional non-critical element adjusted to relieve budget strain',
+            savingsMinor: cut,
+          });
+        }
       }
     }
     if (deficitMinor > 0 && accumulatedSavingsMinor >= deficitMinor) break;
   }
 
-  // Pass 2: If still deficient, optimize 'nice_to_have' items by 20%
+  // Pass 2: If still deficient, optimize 'nice_to_have' items
   if (deficitMinor > 0 && accumulatedSavingsMinor < deficitMinor) {
     for (let i = 0; i < proposedExpenses.length; i++) {
       const item = proposedExpenses[i];
       if (item.priority === 'nice_to_have' && item.status !== 'confirmed' && item.status !== 'paid') {
         const currentCost = item.estimatedCostMinor;
         if (currentCost > 5000) {
-          const cut = Math.round(currentCost * 0.2); // 20% negotiation/tier switch
-          item.estimatedCostMinor = currentCost - cut;
-          accumulatedSavingsMinor += cut;
-          tradeoffs.push({
-            item: item.name,
-            change: 'Negotiated lower tier package (-20%)',
-            reason: 'Nice-to-have tier adjustment preserves core experience while eliminating deficit',
-            savingsMinor: cut,
-          });
+          const needed = deficitMinor - accumulatedSavingsMinor;
+          const maxCut = Math.round(currentCost * 0.2); // Up to 20% tier switch
+          const cut = Math.min(maxCut, needed);
+
+          if (cut > 0) {
+            item.estimatedCostMinor = currentCost - cut;
+            accumulatedSavingsMinor += cut;
+            tradeoffs.push({
+              item: item.name,
+              change: `Negotiated lower tier package (-${Math.round((cut / currentCost) * 100)}%)`,
+              reason: 'Nice-to-have tier adjustment preserves core experience while eliminating deficit',
+              savingsMinor: cut,
+            });
+          }
         }
       }
       if (accumulatedSavingsMinor >= deficitMinor) break;

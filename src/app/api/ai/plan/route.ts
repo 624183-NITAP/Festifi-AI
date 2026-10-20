@@ -21,7 +21,18 @@ export async function POST(req: NextRequest) {
     }
 
     // 2. Validate payload size and parse JSON
-    const body = await req.json();
+    let body: unknown;
+    try {
+      body = await req.json();
+    } catch {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Malformed JSON payload in request body',
+        },
+        { status: 400 }
+      );
+    }
 
     // 3. Strict schema validation
     const validationResult = EventDetailsSchema.safeParse(body);

@@ -15,7 +15,18 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const body = await req.json();
+    let body: unknown;
+    try {
+      body = await req.json();
+    } catch {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Malformed JSON payload in request body',
+        },
+        { status: 400 }
+      );
+    }
     const validation = VendorInquiryRequestSchema.safeParse(body);
 
     if (!validation.success) {
