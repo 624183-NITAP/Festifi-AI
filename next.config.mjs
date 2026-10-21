@@ -18,6 +18,9 @@ const nextConfig = {
     config.resolve.alias = {
       ...config.resolve.alias,
       '@': path.resolve(__dirname, 'src'),
+      canvg: false,
+      html2canvas: false,
+      dompurify: false,
     };
     return config;
   },

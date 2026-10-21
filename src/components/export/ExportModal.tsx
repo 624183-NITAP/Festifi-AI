@@ -1,7 +1,8 @@
 'use client';
 
-import React, { useState } from 'react';
-import { Check, Copy, Download, FileSpreadsheet, FileText, X } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { Check, Copy, Download, FileSpreadsheet, FileText, Sparkles, X } from 'lucide-react';
+import { downloadClientProposalPdf } from '@/domain/export/pdfExport';
 import {
   exportExpensesToCsv,
   exportStateToJson,
@@ -16,6 +17,17 @@ interface ExportModalProps {
 
 export const ExportModal: React.FC<ExportModalProps> = ({ state, onClose }) => {
   const [copied, setCopied] = useState<boolean>(false);
+  const [isExportingPdf, setIsExportingPdf] = useState<boolean>(false);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onClose]);
 
   const downloadFile = (content: string, filename: string, mimeType: string) => {
     const blob = new Blob([content], { type: mimeType });
@@ -53,6 +65,17 @@ export const ExportModal: React.FC<ExportModalProps> = ({ state, onClose }) => {
     }
   };
 
+  const handleExportPdf = () => {
+    try {
+      setIsExportingPdf(true);
+      downloadClientProposalPdf(state);
+    } catch (err) {
+      console.error('Failed to generate proposal PDF:', err);
+    } finally {
+      setIsExportingPdf(false);
+    }
+  };
+
   return (
     <div className="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="export-modal-title">
       <div className="modal-content animate-fade-in" style={{ maxWidth: '600px' }}>
@@ -78,6 +101,52 @@ export const ExportModal: React.FC<ExportModalProps> = ({ state, onClose }) => {
         </p>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          {/* Executive Client Proposal (PDF) */}
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.08) 0%, rgba(139, 92, 246, 0.08) 100%)',
+              border: '1px solid rgba(245, 158, 11, 0.4)',
+              borderRadius: '12px',
+              padding: '16px',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <Sparkles size={24} color="var(--accent-gold)" aria-hidden="true" />
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <strong style={{ fontSize: '0.95rem', color: '#ffffff' }}>Executive Client Proposal (PDF)</strong>
+                  <span
+                    className="badge"
+                    style={{
+                      fontSize: '0.7rem',
+                      background: 'rgba(245, 158, 11, 0.2)',
+                      color: 'var(--accent-gold)',
+                      border: '1px solid rgba(245, 158, 11, 0.4)',
+                      padding: '2px 6px',
+                    }}
+                  >
+                    Client-Ready
+                  </span>
+                </div>
+                <p style={{ fontSize: '0.775rem', color: 'var(--text-secondary)' }}>
+                  Publication-grade document with budget audit, guest catering requirements, and milestone roadmap.
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              className="btn btn-gold btn-sm"
+              onClick={handleExportPdf}
+              disabled={isExportingPdf}
+              aria-label="Download executive client proposal PDF"
+            >
+              <Download size={14} aria-hidden="true" />
+              <span>{isExportingPdf ? 'Generating...' : 'Download PDF'}</span>
+            </button>
+          </div>
           {/* CSV Export */}
           <div
             style={{

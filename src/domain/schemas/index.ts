@@ -210,3 +210,105 @@ export const VendorInquiryRequestSchema = z.object({
   vendor: VendorRecordSchema,
   specialRequests: z.string().max(500).optional().default(''),
 });
+
+// Guest & RSVP Schemas
+export const RsvpStatusSchema = z.enum(['attending', 'declined', 'pending']);
+
+export const DietaryRestrictionSchema = z.enum([
+  'none',
+  'vegetarian',
+  'vegan',
+  'gluten_free',
+  'nut_allergy',
+  'halal',
+  'kosher',
+  'dairy_free',
+  'other',
+]);
+
+export const GuestRecordSchema = z.object({
+  id: z.string().min(1).max(64),
+  fullName: z.string().trim().min(1, 'Guest name is required').max(100),
+  email: z.string().trim().email('Invalid email').or(z.literal('')).default(''),
+  phone: z.string().trim().max(30).optional().default(''),
+  rsvpStatus: RsvpStatusSchema.default('pending'),
+  dietaryPreference: DietaryRestrictionSchema.default('none'),
+  dietaryNotes: z.string().trim().max(300).optional().default(''),
+  plusOne: z.boolean().default(false),
+  tableAssignment: z.string().trim().max(50).optional().default(''),
+  invitationSent: z.boolean().default(false),
+  updatedAt: z.string().datetime({ offset: true }).optional().default(() => new Date().toISOString()),
+});
+
+// Copilot Schemas
+export const CopilotActionTypeSchema = z.enum([
+  'budget_reduction',
+  'preparation_checklist',
+  'rain_contingency',
+  'timeline_adjustment',
+  'lower_cost_alternatives',
+  'realism_audit',
+  'custom',
+]);
+
+export const CopilotExpenseChangeSchema = z.object({
+  id: z.string().optional(),
+  name: z.string().min(1).max(120),
+  categoryId: BudgetCategorySchema,
+  estimatedCostMinor: z.number().int().finite().nonnegative(),
+  deltaMinor: z.number().int().finite(),
+  action: z.enum(['update', 'add', 'remove']),
+  rationale: z.string().max(300),
+});
+
+export const CopilotTaskChangeSchema = z.object({
+  id: z.string().optional(),
+  title: z.string().min(1).max(150),
+  description: z.string().max(500).default(''),
+  category: z.union([BudgetCategorySchema, z.literal('general'), z.literal('permits'), z.literal('rsvp')]),
+  daysBeforeEvent: z.number().int().finite(),
+  deadline: IsoDateSchema.optional(),
+  priority: PriorityLevelSchema.default('must_have'),
+  milestone: z.string().max(80).default('Copilot Action Item'),
+  action: z.enum(['add', 'update', 'remove']),
+  rationale: z.string().max(300),
+});
+
+export const CopilotRealismAnalysisSchema = z.object({
+  feasibilityScore: z.number().min(0).max(100),
+  status: z.enum(['realistic', 'moderate_risk', 'high_risk']),
+  summary: z.string().max(500),
+  budgetCritique: z.array(z.string().max(300)),
+  scheduleCritique: z.array(z.string().max(300)),
+  actionableRecommendations: z.array(z.string().max(300)),
+});
+
+export const CopilotResultSchema = z.object({
+  actionType: CopilotActionTypeSchema,
+  prompt: z.string().max(500),
+  summary: z.string().max(1000),
+  realismAnalysis: CopilotRealismAnalysisSchema.optional(),
+  proposedExpenseChanges: z.array(CopilotExpenseChangeSchema).optional(),
+  proposedTaskChanges: z.array(CopilotTaskChangeSchema).optional(),
+  proposedEventChanges: z.object({
+    totalBudgetMinor: z.number().int().finite().nonnegative().optional(),
+    contingencyPercentage: z.number().finite().min(0).max(50).optional(),
+    targetDate: IsoDateSchema.optional(),
+    notes: z.string().max(1000).optional(),
+  }).optional(),
+  tradeoffs: z.array(z.object({
+    item: z.string(),
+    change: z.string(),
+    reason: z.string(),
+    savingsMinor: z.number().int().finite().default(0),
+  })).optional(),
+});
+
+export const AICopilotRequestSchema = z.object({
+  actionType: CopilotActionTypeSchema,
+  prompt: z.string().trim().min(1).max(500),
+  event: EventDetailsSchema,
+  expenses: z.array(ExpenseItemSchema),
+  tasks: z.array(TimelineTaskSchema).optional().default([]),
+});
+

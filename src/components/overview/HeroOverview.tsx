@@ -1,7 +1,21 @@
 'use client';
 
 import React from 'react';
-import { Calendar, DollarSign, MapPin, Sparkles, Users, ShieldAlert, Utensils, Music, Palette } from 'lucide-react';
+import {
+  Calendar,
+  CheckCircle2,
+  DollarSign,
+  MapPin,
+  Sparkles,
+  Users,
+  ShieldAlert,
+  Utensils,
+  Music,
+  Palette,
+  TrendingUp,
+  Activity,
+  ArrowRight,
+} from 'lucide-react';
 import { calculateBudgetSummary, formatCurrencyMinor } from '@/domain/budget';
 import { daysBetween, formatDateReadable } from '@/domain/timeline';
 import { EventPlanState } from '@/domain/types';
@@ -17,6 +31,25 @@ export const HeroOverview: React.FC<HeroOverviewProps> = ({ state, onNavigateTab
 
   const todayIso = new Date().toISOString().split('T')[0];
   const daysRemaining = daysBetween(todayIso, event.targetDate);
+
+  // Operational Readiness Calculation across Workflow Pillars
+  const totalTasks = state.tasks.length;
+  const completedTasks = state.tasks.filter((t) => t.completed).length;
+  const taskRate = totalTasks > 0 ? (completedTasks / totalTasks) * 100 : 0;
+
+  const budgetRate = budgetSummary.isOverBudget ? 40 : 100;
+
+  const totalGuests = state.guests?.length || 0;
+  const respondedGuests = (state.guests || []).filter((g) => g.rsvpStatus !== 'pending').length;
+  const guestRate = totalGuests > 0 ? (respondedGuests / totalGuests) * 100 : 50;
+
+  const totalVendors = state.vendors.length;
+  const hiredVendors = state.vendors.filter((v) => v.status === 'hired').length;
+  const vendorRate = totalVendors > 0 ? (hiredVendors / totalVendors) * 100 : 50;
+
+  const readinessScore = Math.round(
+    taskRate * 0.3 + budgetRate * 0.3 + guestRate * 0.2 + vendorRate * 0.2
+  );
 
   return (
     <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
@@ -87,6 +120,147 @@ export const HeroOverview: React.FC<HeroOverviewProps> = ({ state, onNavigateTab
               Based on {event.guestCount} guests
             </span>
           </div>
+        </div>
+      </section>
+
+      {/* Celebration Operational Readiness Progress Section */}
+      <section
+        className="glass-card"
+        style={{
+          padding: '24px 28px',
+          borderRadius: '18px',
+          background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.05) 0%, rgba(139, 92, 246, 0.05) 100%)',
+          border: '1px solid rgba(245, 158, 11, 0.3)',
+        }}
+        aria-labelledby="readiness-title"
+      >
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '14px', marginBottom: '16px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <Activity size={22} color="var(--accent-gold)" aria-hidden="true" />
+            <div>
+              <h2 id="readiness-title" style={{ fontSize: '1.15rem', fontWeight: 800, color: '#ffffff' }}>
+                Celebration Operational Readiness: {readinessScore}%
+              </h2>
+              <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                Holistic execution readiness computed across budget health, milestone tasks, RSVPs, and vendors
+              </span>
+            </div>
+          </div>
+
+          <span
+            className="badge"
+            style={{
+              fontSize: '0.9rem',
+              fontWeight: 800,
+              padding: '6px 14px',
+              background: readinessScore >= 75 ? 'rgba(16, 185, 129, 0.2)' : 'rgba(245, 158, 11, 0.2)',
+              color: readinessScore >= 75 ? '#34d399' : '#fbbf24',
+              border: readinessScore >= 75 ? '1px solid rgba(16, 185, 129, 0.4)' : '1px solid rgba(245, 158, 11, 0.4)',
+            }}
+          >
+            {readinessScore >= 80 ? 'Production Ready' : readinessScore >= 60 ? 'In Active Progress' : 'Early Setup Required'}
+          </span>
+        </div>
+
+        {/* Multi-segment Progress Bar */}
+        <div
+          style={{
+            height: '10px',
+            background: 'rgba(255, 255, 255, 0.1)',
+            borderRadius: '10px',
+            overflow: 'hidden',
+            marginBottom: '16px',
+            position: 'relative',
+          }}
+          role="progressbar"
+          aria-valuenow={readinessScore}
+          aria-valuemin={0}
+          aria-valuemax={100}
+        >
+          <div
+            style={{
+              height: '100%',
+              width: `${readinessScore}%`,
+              background: 'linear-gradient(to right, #f59e0b, #ec4899, #8b5cf6)',
+              borderRadius: '10px',
+              transition: 'width 0.6s ease',
+            }}
+          />
+        </div>
+
+        {/* 4 Pillars Breakdown Grid */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px' }}>
+          <button
+            type="button"
+            onClick={() => onNavigateTab('budget')}
+            style={{
+              background: 'rgba(255, 255, 255, 0.02)',
+              border: '1px solid var(--border-subtle)',
+              borderRadius: '10px',
+              padding: '10px 14px',
+              textAlign: 'left',
+              cursor: 'pointer',
+            }}
+          >
+            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Budget Solvency</div>
+            <strong style={{ fontSize: '0.9rem', color: budgetSummary.isOverBudget ? '#f87171' : '#34d399' }}>
+              {budgetSummary.isOverBudget ? 'Deficit Flagged' : '100% Solvent'}
+            </strong>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => onNavigateTab('timeline')}
+            style={{
+              background: 'rgba(255, 255, 255, 0.02)',
+              border: '1px solid var(--border-subtle)',
+              borderRadius: '10px',
+              padding: '10px 14px',
+              textAlign: 'left',
+              cursor: 'pointer',
+            }}
+          >
+            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Timeline Tasks</div>
+            <strong style={{ fontSize: '0.9rem', color: '#ffffff' }}>
+              {completedTasks} of {totalTasks} Done ({Math.round(taskRate)}%)
+            </strong>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => onNavigateTab('guests')}
+            style={{
+              background: 'rgba(255, 255, 255, 0.02)',
+              border: '1px solid var(--border-subtle)',
+              borderRadius: '10px',
+              padding: '10px 14px',
+              textAlign: 'left',
+              cursor: 'pointer',
+            }}
+          >
+            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>RSVP Responses</div>
+            <strong style={{ fontSize: '0.9rem', color: '#38bdf8' }}>
+              {respondedGuests} of {totalGuests} Responded
+            </strong>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => onNavigateTab('vendors')}
+            style={{
+              background: 'rgba(255, 255, 255, 0.02)',
+              border: '1px solid var(--border-subtle)',
+              borderRadius: '10px',
+              padding: '10px 14px',
+              textAlign: 'left',
+              cursor: 'pointer',
+            }}
+          >
+            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Vendor Contracts</div>
+            <strong style={{ fontSize: '0.9rem', color: '#c084fc' }}>
+              {hiredVendors} of {totalVendors} Locked
+            </strong>
+          </button>
         </div>
       </section>
 

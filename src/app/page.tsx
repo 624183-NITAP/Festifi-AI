@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import {
+  Briefcase,
   Calendar,
   CheckCircle2,
   DollarSign,
@@ -22,18 +23,24 @@ import {
   EventPlanState,
   ExpenseItem,
   GeneratedEventPlan,
+  GuestRecord,
   TimelineTask,
   VendorRecord,
 } from '@/domain/types';
+import { AICopilotModal } from '@/components/copilot/AICopilotModal';
 import { BudgetManager } from '@/components/budget/BudgetManager';
 import { BudgetOptimizerModal } from '@/components/budget/BudgetOptimizerModal';
 import { CreateEventModal } from '@/components/creation/CreateEventModal';
 import { ExportModal } from '@/components/export/ExportModal';
+import { GuestManager } from '@/components/guests/GuestManager';
 import { Header } from '@/components/navigation/Header';
 import { HeroOverview } from '@/components/overview/HeroOverview';
+import { InvitationPreviewModal } from '@/components/invitation/InvitationPreviewModal';
+import { JudgeGuideModal } from '@/components/demo/JudgeGuideModal';
 import { ScenarioSimulator } from '@/components/scenarios/ScenarioSimulator';
 import { TimelineManager } from '@/components/timeline/TimelineManager';
 import { VendorManager } from '@/components/vendors/VendorManager';
+import { defaultShowcaseGuests } from '@/domain/guests';
 
 // Default initial showcase celebration
 const defaultShowcaseEvent: EventDetails = {
@@ -157,76 +164,87 @@ const defaultShowcaseVendors: VendorRecord[] = [
   },
 ];
 
+const defaultShowcaseIdeas: GeneratedEventPlan = {
+  concepts: [
+    {
+      title: 'Botanical Glasshouse Luminary',
+      description: 'Lush greenery canopies, trailing ivy arches, warm Edison filament lighting, and intimate acoustic instrumentation creating an ethereal natural atmosphere.',
+      estimatedVibe: 'Romantic, Sophisticated & Organic',
+      suitability: 'Perfect for estate glasshouses, outdoor conservatories, and botanical gardens.',
+    },
+    {
+      title: 'Modern Minimalist Velvet',
+      description: 'Structured calla lily arrangements, geometric brass accents, rich emerald velvet linens, and customized signature gin cocktails.',
+      estimatedVibe: 'High-Fashion, Sleek & Contemporary',
+      suitability: 'Ideal for modern gallery spaces and urban loft celebrations.',
+    },
+  ],
+  themes: [
+    {
+      name: 'Emerald Forest & Champagne Gold',
+      colorPalette: ['#064E3B', '#D97706', '#F8FAFC', '#1F2937'],
+      decorIdeas: ['Eucalyptus table runners', 'Champagne silk accents', 'Gold metallic charger plates'],
+      vibe: 'Refined botanical opulence',
+    },
+    {
+      name: 'Celestial Twilight & Ivory',
+      colorPalette: ['#1E1B4B', '#9333EA', '#F3F4F6', '#030712'],
+      decorIdeas: ['Star-projection canopy', 'Midnight velvet napkins', 'White floral chandeliers'],
+      vibe: 'Enchanted evening celebration',
+    },
+  ],
+  menu: [
+    { course: 'Hors d’oeuvres', item: 'Truffled Wild Mushroom Tartlets', dietaryNotes: 'Vegetarian & Nut-Free', description: 'Crisp pastry filled with caramelized leeks and thyme-infused wild mushrooms.' },
+    { course: 'Main Entrée', item: 'Herb-Roasted Chilean Sea Bass or Filet Mignon', dietaryNotes: 'Gluten-Free & Dairy-Free', description: 'Accompanied by garlic parsnip silk and roasted heirloom carrots.' },
+    { course: 'Dessert', item: 'Artisanal Matcha Vanilla Bean Sponge Cake', dietaryNotes: 'Organic & Vegetarian', description: 'Filled with white chocolate mousse and raspberry reduction.' },
+  ],
+  entertainment: [
+    { type: 'Acoustic String Duo', description: 'Classical and modern romantic melodies during guest arrival and ceremony processional.', estimatedCostTier: 'moderate' },
+    { type: 'Live 5-Piece Jazz / Dance Band', description: 'Seamless blend of Motown classics, modern pop, and energetic dance anthems.', estimatedCostTier: 'luxury' },
+  ],
+  recommendedTasks: [
+    { title: 'Confirm Floral Mockups with Florist', description: 'Inspect mockup table arrangements for height and lighting', category: 'decor', daysBeforeEvent: 45, priority: 'nice_to_have', milestone: '1.5 Months Before' },
+  ],
+  recommendedExpenses: [
+    { categoryId: 'venue', name: 'Venue Rental Fee', estimatedCostMinor: 1100000, priority: 'must_have' },
+    { categoryId: 'catering', name: 'Dinner & Open Bar', estimatedCostMinor: 1200000, priority: 'must_have' },
+  ],
+  aiAssumptions: [
+    'Budget figures reflect verified median regional prices for quality licensed vendors.',
+    'Guest count calculations assume 120 adult dinner portions and continuous beverage service.',
+  ],
+};
+
 export default function FestiFiApp() {
-  const [activeTab, setActiveTab] = useState<'overview' | 'budget' | 'optimizer' | 'scenarios' | 'timeline' | 'vendors'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'budget' | 'optimizer' | 'scenarios' | 'timeline' | 'vendors' | 'guests'>('overview');
   const [isAiLive, setIsAiLive] = useState<boolean>(false);
   const [showCreateModal, setShowCreateModal] = useState<boolean>(false);
   const [showExportModal, setShowExportModal] = useState<boolean>(false);
   const [showOptimizerModal, setShowOptimizerModal] = useState<boolean>(false);
+  const [showCopilotModal, setShowCopilotModal] = useState<boolean>(false);
+  const [showInvitationModal, setShowInvitationModal] = useState<boolean>(false);
+  const [showJudgeModal, setShowJudgeModal] = useState<boolean>(false);
   const [statusMessage, setStatusMessage] = useState<string>('Welcome to FestiFi AI');
 
   // Application State
   const [state, setState] = useState<EventPlanState>(() => {
     const saved = loadActiveEventPlanState();
-    if (saved) return saved;
+    if (saved) {
+      return {
+        ...saved,
+        guests: saved.guests && saved.guests.length > 0 ? saved.guests : defaultShowcaseGuests,
+      };
+    }
 
     return {
       event: defaultShowcaseEvent,
       expenses: defaultShowcaseExpenses,
       tasks: deriveTasksFromEvent(defaultShowcaseEvent),
       vendors: defaultShowcaseVendors,
+      guests: defaultShowcaseGuests,
       activeProposal: null,
       activeScenarioImpact: null,
-      generatedIdeas: {
-        concepts: [
-          {
-            title: 'Botanical Glasshouse Luminary',
-            description: 'Lush greenery canopies, trailing ivy arches, warm Edison filament lighting, and intimate acoustic instrumentation creating an ethereal natural atmosphere.',
-            estimatedVibe: 'Romantic, Sophisticated & Organic',
-            suitability: 'Perfect for estate glasshouses, outdoor conservatories, and botanical gardens.',
-          },
-          {
-            title: 'Modern Minimalist Velvet',
-            description: 'Structured calla lily arrangements, geometric brass accents, rich emerald velvet linens, and customized signature gin cocktails.',
-            estimatedVibe: 'High-Fashion, Sleek & Contemporary',
-            suitability: 'Ideal for modern gallery spaces and urban loft celebrations.',
-          },
-        ],
-        themes: [
-          {
-            name: 'Emerald Forest & Champagne Gold',
-            colorPalette: ['#064E3B', '#D97706', '#F8FAFC', '#1F2937'],
-            decorIdeas: ['Eucalyptus table runners', 'Champagne silk accents', 'Gold metallic charger plates'],
-            vibe: 'Refined botanical opulence',
-          },
-          {
-            name: 'Celestial Twilight & Ivory',
-            colorPalette: ['#1E1B4B', '#9333EA', '#F3F4F6', '#030712'],
-            decorIdeas: ['Star-projection canopy', 'Midnight velvet napkins', 'White floral chandeliers'],
-            vibe: 'Enchanted evening celebration',
-          },
-        ],
-        menu: [
-          { course: 'Hors d’oeuvres', item: 'Truffled Wild Mushroom Tartlets', dietaryNotes: 'Vegetarian & Nut-Free', description: 'Crisp pastry filled with caramelized leeks and thyme-infused wild mushrooms.' },
-          { course: 'Main Entrée', item: 'Herb-Roasted Chilean Sea Bass or Filet Mignon', dietaryNotes: 'Gluten-Free & Dairy-Free', description: 'Accompanied by garlic parsnip silk and roasted heirloom carrots.' },
-          { course: 'Dessert', item: 'Artisanal Matcha Vanilla Bean Sponge Cake', dietaryNotes: 'Organic & Vegetarian', description: 'Filled with white chocolate mousse and raspberry reduction.' },
-        ],
-        entertainment: [
-          { type: 'Acoustic String Duo', description: 'Classical and modern romantic melodies during guest arrival and ceremony processional.', estimatedCostTier: 'moderate' },
-          { type: 'Live 5-Piece Jazz / Dance Band', description: 'Seamless blend of Motown classics, modern pop, and energetic dance anthems.', estimatedCostTier: 'luxury' },
-        ],
-        recommendedTasks: [
-          { title: 'Confirm Floral Mockups with Florist', description: 'Inspect mockup table arrangements for height and lighting', category: 'decor', daysBeforeEvent: 45, priority: 'nice_to_have', milestone: '1.5 Months Before' },
-        ],
-        recommendedExpenses: [
-          { categoryId: 'venue', name: 'Venue Rental Fee', estimatedCostMinor: 1100000, priority: 'must_have' },
-          { categoryId: 'catering', name: 'Dinner & Open Bar', estimatedCostMinor: 1200000, priority: 'must_have' },
-        ],
-        aiAssumptions: [
-          'Budget figures reflect verified median regional prices for quality licensed vendors.',
-          'Guest count calculations assume 120 adult dinner portions and continuous beverage service.',
-        ],
-      },
+      generatedIdeas: defaultShowcaseIdeas,
     };
   });
 
@@ -272,6 +290,15 @@ export default function FestiFiApp() {
       event: { ...prev.event, updatedAt: new Date().toISOString() },
     }));
     setStatusMessage('Updated vendor records saved.');
+  };
+
+  const handleUpdateGuests = (newGuests: GuestRecord[]) => {
+    setState((prev) => ({
+      ...prev,
+      guests: newGuests,
+      event: { ...prev.event, updatedAt: new Date().toISOString() },
+    }));
+    setStatusMessage('Updated guest list and RSVP status saved.');
   };
 
   const handleCreateNewEvent = (
@@ -361,6 +388,7 @@ export default function FestiFiApp() {
       expenses: initialExpenses,
       tasks: initialTasks,
       vendors: [],
+      guests: [],
       activeProposal: null,
       activeScenarioImpact: null,
       generatedIdeas: initialIdeas,
@@ -396,6 +424,45 @@ export default function FestiFiApp() {
     setStatusMessage('Optimization proposal rejected. Original budget preserved without changes.');
   };
 
+  const handleApplyCopilotChanges = ({
+    updatedEvent,
+    updatedExpenses,
+    updatedTasks,
+    summaryMessage,
+  }: {
+    updatedEvent?: Partial<EventDetails>;
+    updatedExpenses?: ExpenseItem[];
+    updatedTasks?: TimelineTask[];
+    summaryMessage: string;
+  }) => {
+    setState((prev) => ({
+      ...prev,
+      event: updatedEvent
+        ? { ...prev.event, ...updatedEvent, updatedAt: new Date().toISOString() }
+        : { ...prev.event, updatedAt: new Date().toISOString() },
+      expenses: updatedExpenses || prev.expenses,
+      tasks: updatedTasks || prev.tasks,
+    }));
+    setStatusMessage(`Copilot applied changes: ${summaryMessage}`);
+  };
+
+  const handleResetShowcase = () => {
+    const pristineState: EventPlanState = {
+      event: defaultShowcaseEvent,
+      expenses: defaultShowcaseExpenses,
+      tasks: deriveTasksFromEvent(defaultShowcaseEvent),
+      vendors: defaultShowcaseVendors,
+      guests: defaultShowcaseGuests,
+      activeProposal: null,
+      activeScenarioImpact: null,
+      generatedIdeas: defaultShowcaseIdeas,
+    };
+    setState(pristineState);
+    saveEventPlanState(pristineState);
+    setActiveTab('overview');
+    setStatusMessage('Celebration reset to pristine Emerald Forest showcase demo.');
+  };
+
   return (
     <div className="app-container" style={{ paddingBottom: '60px' }}>
       {/* Accessible live region for screen-reader announcements */}
@@ -409,6 +476,8 @@ export default function FestiFiApp() {
         isAiLive={isAiLive}
         onOpenCreateModal={() => setShowCreateModal(true)}
         onOpenExportModal={() => setShowExportModal(true)}
+        onOpenCopilotModal={() => setShowCopilotModal(true)}
+        onOpenJudgeGuide={() => setShowJudgeModal(true)}
       />
 
       {/* Navigation Tabs Landmark */}
@@ -475,8 +544,21 @@ export default function FestiFiApp() {
             className={`nav-tab ${activeTab === 'vendors' ? 'active' : ''}`}
             onClick={() => setActiveTab('vendors')}
           >
-            <Users size={16} aria-hidden="true" />
+            <Briefcase size={16} aria-hidden="true" />
             <span>Vendors & Inquiries ({state.vendors.length})</span>
+          </button>
+
+          <button
+            type="button"
+            role="tab"
+            id="tab-guests"
+            aria-selected={activeTab === 'guests'}
+            aria-controls="panel-guests"
+            className={`nav-tab ${activeTab === 'guests' ? 'active' : ''}`}
+            onClick={() => setActiveTab('guests')}
+          >
+            <Users size={16} aria-hidden="true" />
+            <span>Guests & RSVPs ({(state.guests || []).length})</span>
           </button>
         </div>
       </nav>
@@ -538,6 +620,17 @@ export default function FestiFiApp() {
             />
           </div>
         )}
+
+        {activeTab === 'guests' && (
+          <div role="tabpanel" id="panel-guests" aria-labelledby="tab-guests">
+            <GuestManager
+              event={state.event}
+              guests={state.guests || []}
+              onUpdateGuests={handleUpdateGuests}
+              onOpenInvitationPreview={() => setShowInvitationModal(true)}
+            />
+          </div>
+        )}
       </main>
 
       {/* Modals */}
@@ -561,6 +654,39 @@ export default function FestiFiApp() {
         <ExportModal
           state={state}
           onClose={() => setShowExportModal(false)}
+        />
+      )}
+
+      {showCopilotModal && (
+        <AICopilotModal
+          event={state.event}
+          expenses={state.expenses}
+          tasks={state.tasks}
+          onClose={() => setShowCopilotModal(false)}
+          onApplyChanges={handleApplyCopilotChanges}
+        />
+      )}
+
+      {showInvitationModal && (
+        <InvitationPreviewModal
+          event={state.event}
+          onClose={() => setShowInvitationModal(false)}
+        />
+      )}
+
+      {showJudgeModal && (
+        <JudgeGuideModal
+          onClose={() => setShowJudgeModal(false)}
+          onNavigateTab={(tab) => {
+            if (tab === 'budget') {
+              setActiveTab('budget');
+            } else {
+              setActiveTab(tab);
+            }
+          }}
+          onOpenCopilot={() => setShowCopilotModal(true)}
+          onOpenExport={() => setShowExportModal(true)}
+          onResetShowcase={handleResetShowcase}
         />
       )}
     </div>

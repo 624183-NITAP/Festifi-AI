@@ -1,9 +1,36 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Plus, Trash2, CheckCircle, Edit3, DollarSign, Filter, PieChart } from 'lucide-react';
-import { CATEGORY_NAMES, calculateBudgetSummary, formatCurrencyMinor, parseDecimalToMinor } from '@/domain/budget';
-import { BudgetCategory, EventDetails, ExpenseItem, PriorityLevel } from '@/domain/types';
+import {
+  AlertTriangle,
+  Check,
+  CheckCircle,
+  DollarSign,
+  Edit3,
+  Filter,
+  Layers,
+  PieChart,
+  Plus,
+  Sparkles,
+  Trash2,
+  TrendingUp,
+} from 'lucide-react';
+import {
+  CATEGORY_NAMES,
+  applyBudgetAlternative,
+  calculateBudgetSummary,
+  formatCurrencyMinor,
+  generateBudgetAlternatives,
+  parseDecimalToMinor,
+} from '@/domain/budget';
+import {
+  BudgetAlternativeOption,
+  BudgetCategory,
+  BudgetTier,
+  EventDetails,
+  ExpenseItem,
+  PriorityLevel,
+} from '@/domain/types';
 
 interface BudgetManagerProps {
   event: EventDetails;
@@ -22,6 +49,8 @@ export const BudgetManager: React.FC<BudgetManagerProps> = ({
   const [filterPriority, setFilterPriority] = useState<string>('all');
   const [showAddModal, setShowAddModal] = useState<boolean>(false);
   const [editingItem, setEditingItem] = useState<ExpenseItem | null>(null);
+  const [selectedTier, setSelectedTier] = useState<BudgetTier>('balanced');
+  const [tierAppliedMessage, setTierAppliedMessage] = useState<string | null>(null);
 
   // Form state for add/edit modal
   const [formCategory, setFormCategory] = useState<BudgetCategory>('venue');
@@ -230,6 +259,173 @@ export const BudgetManager: React.FC<BudgetManagerProps> = ({
           </button>
         </div>
       </div>
+
+      {/* Over-Budget Alert Warning */}
+      {budgetSummary.isOverBudget && (
+        <div
+          style={{
+            background: 'rgba(239, 68, 68, 0.12)',
+            border: '1px solid rgba(239, 68, 68, 0.4)',
+            borderRadius: '14px',
+            padding: '16px 20px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            flexWrap: 'wrap',
+            gap: '12px',
+          }}
+          role="alert"
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <AlertTriangle size={24} color="#f87171" aria-hidden="true" />
+            <div>
+              <strong style={{ fontSize: '0.95rem', color: '#fca5a5' }}>
+                Budget Deficit Warning: Exceeds Total Ceiling
+              </strong>
+              <p style={{ fontSize: '0.825rem', color: 'var(--text-secondary)', margin: '2px 0 0' }}>
+                Total committed expenses plus contingency ({formatCurrencyMinor(budgetSummary.plannedMinor + budgetSummary.confirmedMinor + budgetSummary.contingencyReserveMinor, event.currency)}) exceed available funding by {formatCurrencyMinor(Math.abs(budgetSummary.varianceMinor), event.currency)}.
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            className="btn btn-gold btn-sm"
+            onClick={onOpenOptimizerModal}
+          >
+            <span>Resolve via AI Optimizer</span>
+          </button>
+        </div>
+      )}
+
+      {/* Tier Applied Notification */}
+      {tierAppliedMessage && (
+        <div
+          style={{
+            background: 'rgba(16, 185, 129, 0.15)',
+            border: '1px solid rgba(16, 185, 129, 0.3)',
+            borderRadius: '10px',
+            padding: '12px 16px',
+            color: '#6ee7b7',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+          }}
+          role="status"
+        >
+          <CheckCircle size={18} aria-hidden="true" />
+          <span>{tierAppliedMessage}</span>
+        </div>
+      )}
+
+      {/* 3-Tier Budget Planning Alternatives Section */}
+      <section
+        className="glass-card"
+        style={{ padding: '24px', borderRadius: '18px' }}
+        aria-labelledby="planning-alternatives-heading"
+      >
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px', marginBottom: '16px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <Layers size={20} color="var(--accent-gold)" aria-hidden="true" />
+            <h3 id="planning-alternatives-heading" style={{ fontSize: '1.15rem', fontWeight: 700 }}>
+              Planning Alternatives (Economical • Balanced • Premium)
+            </h3>
+          </div>
+          <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+            Deterministic financial modeling across 3 tier scopes
+          </span>
+        </div>
+
+        {(() => {
+          const alternatives = generateBudgetAlternatives(event, expenses);
+          const tiers: BudgetTier[] = ['economical', 'balanced', 'premium'];
+
+          return (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '16px' }}>
+              {tiers.map((tKey) => {
+                const alt = alternatives[tKey];
+                const isSelected = selectedTier === tKey;
+                const isBalanced = tKey === 'balanced';
+                const isPremium = tKey === 'premium';
+
+                return (
+                  <div
+                    key={tKey}
+                    style={{
+                      background: isSelected ? 'rgba(245, 158, 11, 0.08)' : 'rgba(255, 255, 255, 0.02)',
+                      border: isSelected
+                        ? '2px solid var(--accent-gold)'
+                        : '1px solid var(--border-subtle)',
+                      borderRadius: '14px',
+                      padding: '18px',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      justifyContent: 'space-between',
+                      gap: '14px',
+                      boxShadow: isSelected ? '0 0 15px rgba(245, 158, 11, 0.2)' : undefined,
+                    }}
+                  >
+                    <div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                        <span
+                          className="badge"
+                          style={{
+                            background: isBalanced ? 'rgba(56, 189, 248, 0.2)' : isPremium ? 'rgba(192, 132, 252, 0.2)' : 'rgba(16, 185, 129, 0.2)',
+                            color: isBalanced ? '#38bdf8' : isPremium ? '#c084fc' : '#34d399',
+                            textTransform: 'capitalize',
+                          }}
+                        >
+                          {alt.tier}
+                        </span>
+                        {isBalanced && (
+                          <span style={{ fontSize: '0.75rem', color: 'var(--accent-gold)', fontWeight: 700 }}>
+                            RECOMMENDED
+                          </span>
+                        )}
+                      </div>
+
+                      <strong style={{ fontSize: '1.05rem', color: '#ffffff', display: 'block' }}>
+                        {alt.name}
+                      </strong>
+                      <p style={{ fontSize: '0.775rem', color: 'var(--text-secondary)', margin: '4px 0 12px' }}>
+                        {alt.subtitle}
+                      </p>
+
+                      <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#ffffff' }}>
+                        {formatCurrencyMinor(alt.totalEstimatedMinor, event.currency)}
+                      </div>
+                      <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                        Contingency: {formatCurrencyMinor(alt.contingencyReserveMinor, event.currency)}
+                      </span>
+
+                      <ul style={{ margin: '12px 0 0 16px', fontSize: '0.775rem', color: 'var(--text-secondary)' }}>
+                        {alt.keyHighlights.map((hl, i) => (
+                          <li key={i} style={{ marginBottom: '4px' }}>{hl}</li>
+                        ))}
+                      </ul>
+                    </div>
+
+                    <button
+                      type="button"
+                      className={`btn ${isSelected ? 'btn-gold' : 'btn-secondary'} btn-sm`}
+                      onClick={() => {
+                        setSelectedTier(tKey);
+                        const updated = applyBudgetAlternative(expenses, alt);
+                        onUpdateExpenses(updated);
+                        setTierAppliedMessage(`Applied ${alt.name} planning alternative to current expenses!`);
+                        setTimeout(() => setTierAppliedMessage(null), 4000);
+                      }}
+                      style={{ width: '100%' }}
+                    >
+                      <Check size={14} aria-hidden="true" />
+                      <span>{isSelected ? 'Currently Selected' : `Apply ${alt.name}`}</span>
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })()}
+      </section>
 
       {/* Visual Category Breakdown: Donut Chart + Accessible Data Table */}
       <section

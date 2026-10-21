@@ -6,15 +6,21 @@
  */
 
 import {
+  CopilotResultSchema,
   GeneratedEventPlanSchema,
 } from '../schemas';
 import {
   BudgetCategory,
+  CopilotActionType,
+  CopilotResult,
   EventDetails,
+  ExpenseItem,
   GeneratedEventPlan,
   PriorityLevel,
+  TimelineTask,
   VendorRecord,
 } from '../types';
+import { executeDeterministicCopilot, CopilotContext } from './copilot';
 
 export interface VendorInquiryResult {
   inquiryMessage: string;
@@ -32,6 +38,11 @@ export interface IAIProvider {
     vendor: VendorRecord,
     notes?: string
   ): Promise<VendorInquiryResult>;
+  executeCopilot(
+    context: CopilotContext,
+    actionType: CopilotActionType,
+    prompt: string
+  ): Promise<CopilotResult>;
 }
 
 /**
@@ -50,6 +61,20 @@ export class DeterministicDemoAIProvider implements IAIProvider {
       plan: validated,
       provider: this.name,
       isLive: false,
+    };
+  }
+
+  async executeCopilot(
+    context: CopilotContext,
+    actionType: CopilotActionType,
+    prompt: string
+  ): Promise<CopilotResult> {
+    const rawResult = executeDeterministicCopilot(context, actionType, prompt);
+    const validated = CopilotResultSchema.parse(rawResult);
+    return {
+      ...validated,
+      isLive: false,
+      providerName: this.name,
     };
   }
 
@@ -434,6 +459,128 @@ CRITICAL INSTRUCTIONS:
       isAiGenerated: false,
       providerName: `${this.fallbackProvider.name} (Template)`,
     };
+  }
+
+  async executeCopilot(
+    context: CopilotContext,
+    actionType: CopilotActionType,
+    prompt: string
+  ): Promise<CopilotResult> {
+    if (!this.apiKey) {
+      return this.fallbackProvider.executeCopilot(context, actionType, prompt);
+    }
+
+    const { event, expenses, tasks = [] } = context;
+
+    const geminiPrompt = `
+You are the expert FestiFi AI Event Copilot.
+The user is requesting assistance for an event with the following context:
+- Event: "${event.title}" (${event.type}), Date: ${event.targetDate}, Guests: ${event.guestCount}, Currency: ${event.currency}
+- Total Budget in minor currency units (cents): ${event.totalBudgetMinor}
+- Expenses count: ${expenses.length} items
+- Tasks count: ${tasks.length} milestones
+- Action Type: ${actionType}
+- User Prompt: "${prompt}"
+
+CRITICAL INSTRUCTIONS:
+1. Respond with valid JSON only. No markdown formatting, no code fences, no introductory or concluding text.
+2. Structure must match this exact JSON schema:
+{
+  "actionType": "${actionType}",
+  "prompt": string,
+  "summary": string,
+  "realismAnalysis": {
+    "feasibilityScore": integer (0 to 100),
+    "status": "realistic" | "moderate_risk" | "high_risk",
+    "summary": string,
+    "budgetCritique": [ string ],
+    "scheduleCritique": [ string ],
+    "actionableRecommendations": [ string ]
+  } (optional, required if actionType is "realism_audit"),
+  "proposedExpenseChanges": [
+    {
+      "name": string,
+      "categoryId": "venue"|"catering"|"entertainment"|"photography"|"decor"|"attire"|"invitations"|"logistics"|"miscellaneous",
+      "estimatedCostMinor": integer,
+      "deltaMinor": integer,
+      "action": "update" | "add" | "remove",
+      "rationale": string
+    }
+  ] (optional),
+  "proposedTaskChanges": [
+    {
+      "title": string,
+      "description": string,
+      "category": "venue"|"catering"|"entertainment"|"photography"|"decor"|"attire"|"invitations"|"logistics"|"miscellaneous"|"general"|"permits"|"rsvp",
+      "daysBeforeEvent": integer,
+      "priority": "must_have"|"nice_to_have"|"optional",
+      "milestone": string,
+      "action": "add" | "update" | "remove",
+      "rationale": string
+    }
+  ] (optional),
+  "proposedEventChanges": {
+    "totalBudgetMinor": integer,
+    "contingencyPercentage": number,
+    "targetDate": "YYYY-MM-DD",
+    "notes": string
+  } (optional),
+  "tradeoffs": [
+    { "item": string, "change": string, "reason": string, "savingsMinor": integer }
+  ] (optional)
+}
+`;
+
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 14000); // 14s timeout
+
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${this.model}:generateContent`;
+
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-goog-api-key': this.apiKey,
+        },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: geminiPrompt }] }],
+          generationConfig: {
+            temperature: 0.5,
+            maxOutputTokens: 2048,
+            responseMimeType: 'application/json',
+          },
+        }),
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        console.warn(`Gemini API HTTP ${response.status} on Copilot: Falling back to deterministic copilot.`);
+        return this.fallbackProvider.executeCopilot(context, actionType, prompt);
+      }
+
+      const data = await response.json();
+      const rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+
+      if (!rawText) {
+        return this.fallbackProvider.executeCopilot(context, actionType, prompt);
+      }
+
+      const cleanJson = rawText.replace(/```json/g, '').replace(/```/g, '').trim();
+      const parsed = JSON.parse(cleanJson);
+      const validated = CopilotResultSchema.parse(parsed);
+
+      return {
+        ...validated,
+        isLive: true,
+        providerName: this.name,
+      };
+    } catch (err) {
+      console.warn('Gemini Copilot encountered error, utilizing deterministic fallback safely:', err instanceof Error ? err.message : err);
+      return this.fallbackProvider.executeCopilot(context, actionType, prompt);
+    }
   }
 }
 

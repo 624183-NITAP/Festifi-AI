@@ -212,12 +212,120 @@ export interface GeneratedEventPlan {
   aiAssumptions: string[];
 }
 
+export type CopilotActionType =
+  | 'budget_reduction'
+  | 'preparation_checklist'
+  | 'rain_contingency'
+  | 'timeline_adjustment'
+  | 'lower_cost_alternatives'
+  | 'realism_audit'
+  | 'custom';
+
+export interface CopilotExpenseChange {
+  id?: string;
+  name: string;
+  categoryId: BudgetCategory;
+  estimatedCostMinor: number;
+  deltaMinor: number;
+  action: 'update' | 'add' | 'remove';
+  rationale: string;
+}
+
+export interface CopilotTaskChange {
+  id?: string;
+  title: string;
+  description: string;
+  category: BudgetCategory | 'general' | 'permits' | 'rsvp';
+  daysBeforeEvent: number;
+  deadline?: string;
+  priority: PriorityLevel;
+  milestone: string;
+  action: 'add' | 'update' | 'remove';
+  rationale: string;
+}
+
+export interface CopilotRealismAnalysis {
+  feasibilityScore: number;
+  status: 'realistic' | 'moderate_risk' | 'high_risk';
+  summary: string;
+  budgetCritique: string[];
+  scheduleCritique: string[];
+  actionableRecommendations: string[];
+}
+
+export interface CopilotResult {
+  actionType: CopilotActionType;
+  prompt: string;
+  summary: string;
+  realismAnalysis?: CopilotRealismAnalysis;
+  proposedExpenseChanges?: CopilotExpenseChange[];
+  proposedTaskChanges?: CopilotTaskChange[];
+  proposedEventChanges?: {
+    totalBudgetMinor?: number;
+    contingencyPercentage?: number;
+    targetDate?: string;
+    notes?: string;
+  };
+  tradeoffs?: ScenarioTradeoff[];
+  isLive: boolean;
+  providerName: string;
+}
+
+export type BudgetTier = 'economical' | 'balanced' | 'premium';
+
+export interface BudgetAlternativeOption {
+  tier: BudgetTier;
+  name: string;
+  subtitle: string;
+  totalEstimatedMinor: number;
+  varianceAgainstTotalMinor: number;
+  contingencyReserveMinor: number;
+  description: string;
+  expenses: ExpenseItem[];
+  keyHighlights: string[];
+}
+
+export interface BudgetAlternatives {
+  economical: BudgetAlternativeOption;
+  balanced: BudgetAlternativeOption;
+  premium: BudgetAlternativeOption;
+}
+
+export type RsvpStatus = 'attending' | 'declined' | 'pending';
+
+export type DietaryRestriction =
+  | 'none'
+  | 'vegetarian'
+  | 'vegan'
+  | 'gluten_free'
+  | 'nut_allergy'
+  | 'halal'
+  | 'kosher'
+  | 'dairy_free'
+  | 'other';
+
+export interface GuestRecord {
+  id: string;
+  fullName: string;
+  email: string;
+  phone?: string;
+  rsvpStatus: RsvpStatus;
+  dietaryPreference: DietaryRestriction;
+  dietaryNotes?: string;
+  plusOne: boolean;
+  tableAssignment?: string;
+  invitationSent: boolean;
+  updatedAt: string;
+}
+
 export interface EventPlanState {
   event: EventDetails;
   expenses: ExpenseItem[];
   tasks: TimelineTask[];
   vendors: VendorRecord[];
+  guests?: GuestRecord[];
   activeProposal: BudgetOptimizationProposal | null;
   activeScenarioImpact: ScenarioImpact | null;
   generatedIdeas: GeneratedEventPlan | null;
+  copilotHistory?: Array<{ id: string; timestamp: string; prompt: string; actionType: CopilotActionType; summary: string }>;
 }

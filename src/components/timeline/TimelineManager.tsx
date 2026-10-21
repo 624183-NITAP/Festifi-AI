@@ -6,17 +6,20 @@ import {
   Calendar,
   CheckCircle,
   Clock,
+  Edit3,
   Filter,
   Plus,
   Trash2,
   AlertCircle,
   Sparkles,
+  X,
 } from 'lucide-react';
 import {
   areTaskDependenciesSatisfied,
   calculateDeadline,
   calculateTimelineProgress,
   formatDateReadable,
+  isValidIsoDate,
 } from '@/domain/timeline';
 import { BudgetCategory, EventDetails, PriorityLevel, TimelineTask } from '@/domain/types';
 
@@ -33,6 +36,7 @@ export const TimelineManager: React.FC<TimelineManagerProps> = ({
 }) => {
   const [filterStatus, setFilterStatus] = useState<'all' | 'pending' | 'completed' | 'overdue'>('all');
   const [showAddModal, setShowAddModal] = useState<boolean>(false);
+  const [editingTask, setEditingTask] = useState<TimelineTask | null>(null);
 
   // Form state
   const [taskTitle, setTaskTitle] = useState<string>('');
@@ -41,6 +45,7 @@ export const TimelineManager: React.FC<TimelineManagerProps> = ({
   const [taskDaysBefore, setTaskDaysBefore] = useState<number>(30);
   const [taskPriority, setTaskPriority] = useState<PriorityLevel>('must_have');
   const [taskMilestone, setTaskMilestone] = useState<string>('Key Milestone');
+  const [formError, setFormError] = useState<string | null>(null);
 
   const progress = calculateTimelineProgress(tasks);
 
@@ -53,6 +58,30 @@ export const TimelineManager: React.FC<TimelineManagerProps> = ({
     }
     return true;
   });
+
+  const handleOpenAddModal = () => {
+    setEditingTask(null);
+    setTaskTitle('');
+    setTaskDescription('');
+    setTaskCategory('general');
+    setTaskDaysBefore(30);
+    setTaskPriority('must_have');
+    setTaskMilestone('Key Milestone');
+    setFormError(null);
+    setShowAddModal(true);
+  };
+
+  const handleOpenEditModal = (task: TimelineTask) => {
+    setEditingTask(task);
+    setTaskTitle(task.title);
+    setTaskDescription(task.description);
+    setTaskCategory(task.category);
+    setTaskDaysBefore(task.daysBeforeEvent);
+    setTaskPriority(task.priority);
+    setTaskMilestone(task.milestone);
+    setFormError(null);
+    setShowAddModal(true);
+  };
 
   const handleToggleTask = (taskId: string) => {
     const target = tasks.find((t) => t.id === taskId);
@@ -88,30 +117,61 @@ export const TimelineManager: React.FC<TimelineManagerProps> = ({
     onUpdateTasks(tasks.filter((t) => t.id !== taskId));
   };
 
-  const handleCreateTask = (e: React.FormEvent) => {
+  const handleSaveTask = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!taskTitle.trim()) return;
+    setFormError(null);
+
+    if (!taskTitle.trim()) {
+      setFormError('Task title is required.');
+      return;
+    }
+
+    if (taskDaysBefore < 0) {
+      setFormError('Days before event cannot be negative (chronological violation: deadline cannot be after the event).');
+      return;
+    }
+
+    if (!isValidIsoDate(event.targetDate)) {
+      setFormError('Event target date is invalid.');
+      return;
+    }
 
     const deadline = calculateDeadline(event.targetDate, taskDaysBefore);
 
-    const newTask: TimelineTask = {
-      id: `task-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-      title: taskTitle.trim(),
-      description: taskDescription.trim(),
-      category: taskCategory,
-      deadline,
-      daysBeforeEvent: taskDaysBefore,
-      completed: false,
-      completedAt: null,
-      priority: taskPriority,
-      dependencies: [],
-      milestone: taskMilestone,
-    };
+    if (editingTask) {
+      const updated = tasks.map((t) =>
+        t.id === editingTask.id
+          ? {
+              ...t,
+              title: taskTitle.trim(),
+              description: taskDescription.trim(),
+              category: taskCategory,
+              deadline,
+              daysBeforeEvent: taskDaysBefore,
+              priority: taskPriority,
+              milestone: taskMilestone.trim() || 'Key Milestone',
+            }
+          : t
+      );
+      onUpdateTasks(updated);
+    } else {
+      const newTask: TimelineTask = {
+        id: `task-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+        title: taskTitle.trim(),
+        description: taskDescription.trim(),
+        category: taskCategory,
+        deadline,
+        daysBeforeEvent: taskDaysBefore,
+        completed: false,
+        completedAt: null,
+        priority: taskPriority,
+        dependencies: [],
+        milestone: taskMilestone.trim() || 'Key Milestone',
+      };
+      onUpdateTasks([...tasks, newTask]);
+    }
 
-    onUpdateTasks([...tasks, newTask]);
     setShowAddModal(false);
-    setTaskTitle('');
-    setTaskDescription('');
   };
 
   // Group filtered tasks by milestone
@@ -140,7 +200,7 @@ export const TimelineManager: React.FC<TimelineManagerProps> = ({
         <button
           type="button"
           className="btn btn-primary btn-sm"
-          onClick={() => setShowAddModal(true)}
+          onClick={handleOpenAddModal}
           aria-label="Add custom milestone task"
         >
           <Plus size={16} aria-hidden="true" />
@@ -302,15 +362,26 @@ export const TimelineManager: React.FC<TimelineManagerProps> = ({
                       </div>
                     </div>
 
-                    <button
-                      type="button"
-                      className="btn btn-danger btn-sm"
-                      style={{ padding: '4px 8px', minHeight: '30px' }}
-                      onClick={() => handleDeleteTask(task.id)}
-                      aria-label={`Delete task ${task.title}`}
-                    >
-                      <Trash2 size={14} aria-hidden="true" />
-                    </button>
+                    <div style={{ display: 'flex', gap: '6px' }}>
+                      <button
+                        type="button"
+                        className="btn btn-secondary btn-sm"
+                        style={{ padding: '4px 8px', minHeight: '30px' }}
+                        onClick={() => handleOpenEditModal(task)}
+                        aria-label={`Edit task ${task.title}`}
+                      >
+                        <Edit3 size={14} aria-hidden="true" />
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-danger btn-sm"
+                        style={{ padding: '4px 8px', minHeight: '30px' }}
+                        onClick={() => handleDeleteTask(task.id)}
+                        aria-label={`Delete task ${task.title}`}
+                      >
+                        <Trash2 size={14} aria-hidden="true" />
+                      </button>
+                    </div>
                   </div>
                 );
               })}
@@ -319,17 +390,44 @@ export const TimelineManager: React.FC<TimelineManagerProps> = ({
         ))}
       </div>
 
-      {/* Add Task Modal */}
+      {/* Add / Edit Task Modal */}
       {showAddModal && (
-        <div className="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="add-task-heading">
-          <div className="modal-content animate-fade-in">
-            <h3 id="add-task-heading" style={{ fontSize: '1.25rem', fontWeight: 700, marginBottom: '18px' }}>
-              Add Timeline Task
-            </h3>
+        <div className="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="task-modal-heading">
+          <div className="modal-content animate-fade-in" style={{ maxWidth: '520px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px' }}>
+              <h3 id="task-modal-heading" style={{ fontSize: '1.25rem', fontWeight: 700 }}>
+                {editingTask ? 'Edit Milestone Task' : 'Add Timeline Task'}
+              </h3>
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                onClick={() => setShowAddModal(false)}
+                aria-label="Close task dialog"
+              >
+                <X size={16} aria-hidden="true" />
+              </button>
+            </div>
 
-            <form onSubmit={handleCreateTask}>
+            {formError && (
+              <div
+                style={{
+                  background: 'rgba(239, 68, 68, 0.1)',
+                  border: '1px solid rgba(239, 68, 68, 0.3)',
+                  padding: '10px 14px',
+                  borderRadius: '10px',
+                  color: '#fca5a5',
+                  fontSize: '0.85rem',
+                  marginBottom: '16px',
+                }}
+                role="alert"
+              >
+                {formError}
+              </div>
+            )}
+
+            <form onSubmit={handleSaveTask}>
               <div className="form-group">
-                <label htmlFor="task-title" className="form-label">Task Title</label>
+                <label htmlFor="task-title" className="form-label">Task Title *</label>
                 <input
                   id="task-title"
                   type="text"
@@ -338,6 +436,18 @@ export const TimelineManager: React.FC<TimelineManagerProps> = ({
                   value={taskTitle}
                   onChange={(e) => setTaskTitle(e.target.value)}
                   required
+                />
+              </div>
+
+              <div className="form-group">
+                <label htmlFor="task-desc" className="form-label">Description / Instructions</label>
+                <input
+                  id="task-desc"
+                  type="text"
+                  className="form-input"
+                  placeholder="e.g. Confirm table height and lighting setup with florist"
+                  value={taskDescription}
+                  onChange={(e) => setTaskDescription(e.target.value)}
                 />
               </div>
 
@@ -356,7 +466,7 @@ export const TimelineManager: React.FC<TimelineManagerProps> = ({
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
                 <div className="form-group">
-                  <label htmlFor="task-days" className="form-label">Days Before Celebration</label>
+                  <label htmlFor="task-days" className="form-label">Days Before Event</label>
                   <input
                     id="task-days"
                     type="number"
@@ -367,6 +477,9 @@ export const TimelineManager: React.FC<TimelineManagerProps> = ({
                     onChange={(e) => setTaskDaysBefore(Number(e.target.value))}
                     required
                   />
+                  <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '4px', display: 'block' }}>
+                    Deadline: {isValidIsoDate(event.targetDate) ? calculateDeadline(event.targetDate, taskDaysBefore) : 'N/A'}
+                  </span>
                 </div>
 
                 <div className="form-group">
@@ -393,7 +506,7 @@ export const TimelineManager: React.FC<TimelineManagerProps> = ({
                   Cancel
                 </button>
                 <button type="submit" className="btn btn-primary">
-                  Save Task
+                  {editingTask ? 'Save Changes' : 'Create Task'}
                 </button>
               </div>
             </form>

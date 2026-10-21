@@ -1,8 +1,9 @@
 import React from 'react';
-import { describe, expect, it } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { describe, expect, it, vi } from 'vitest';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { BudgetManager } from '@/components/budget/BudgetManager';
 import { Header } from '@/components/navigation/Header';
+import { JudgeGuideModal } from '@/components/demo/JudgeGuideModal';
 import { ScenarioSimulator } from '@/components/scenarios/ScenarioSimulator';
 import { EventDetails, ExpenseItem } from '@/domain/types';
 
@@ -107,5 +108,23 @@ describe('Accessibility (WCAG 2.2 AA) Component Verification', () => {
     expect(screen.getByRole('button', { name: /Surge in Guest Count/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Outdoor Rain/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Critical Vendor Cancellation/i })).toBeInTheDocument();
+  });
+
+  it('dismisses modals when Escape key is pressed (WCAG 2.1.2 No Keyboard Trap)', () => {
+    const handleClose = vi.fn();
+    render(
+      <JudgeGuideModal
+        onClose={handleClose}
+        onNavigateTab={() => {}}
+        onOpenCopilot={() => {}}
+        onOpenExport={() => {}}
+        onResetShowcase={() => {}}
+      />
+    );
+
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    fireEvent.keyDown(window, { key: 'Escape', code: 'Escape' });
+
+    expect(handleClose).toHaveBeenCalledTimes(1);
   });
 });

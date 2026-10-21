@@ -6,8 +6,11 @@
  */
 
 import {
+  BudgetAlternativeOption,
+  BudgetAlternatives,
   BudgetCategory,
   BudgetSummary,
+  BudgetTier,
   CategoryBreakdown,
   CurrencyCode,
   EventDetails,
@@ -343,3 +346,150 @@ export function applyBudgetOptimization(
     };
   });
 }
+
+/**
+ * Generates three distinct, deterministic budget planning alternatives:
+ * 1. Economical (Lean & Essential)
+ * 2. Balanced (Standard Recommended)
+ * 3. Premium (Luxury Upgrades)
+ */
+export function generateBudgetAlternatives(
+  event: EventDetails,
+  expenses: ExpenseItem[]
+): BudgetAlternatives {
+  const summary = calculateBudgetSummary(event, expenses);
+
+  // 1. Economical Tier: Lean, essential-only, cuts optional, trims nice-to-have by 30%
+  const economicalExpenses: ExpenseItem[] = expenses.map((item) => {
+    if (item.status === 'confirmed' || item.status === 'paid') return { ...item };
+    if (item.priority === 'optional') {
+      return {
+        ...item,
+        estimatedCostMinor: Math.round(item.estimatedCostMinor * 0.2), // 80% reduction
+        notes: `${item.notes || ''} [Economical Tier: Trimmed to base essentials]`.trim(),
+      };
+    }
+    if (item.priority === 'nice_to_have') {
+      return {
+        ...item,
+        estimatedCostMinor: Math.round(item.estimatedCostMinor * 0.7), // 30% reduction
+        notes: `${item.notes || ''} [Economical Tier: Streamlined scope]`.trim(),
+      };
+    }
+    return { ...item };
+  });
+
+  const econSummary = calculateBudgetSummary({ ...event, contingencyPercentage: 8 }, economicalExpenses);
+  const econTotal = econSummary.plannedMinor + econSummary.confirmedMinor;
+
+  const economical: BudgetAlternativeOption = {
+    tier: 'economical',
+    name: 'Economical (Essential)',
+    subtitle: 'Cost-conscious package prioritizing must-haves',
+    totalEstimatedMinor: econTotal,
+    varianceAgainstTotalMinor: event.totalBudgetMinor - econTotal,
+    contingencyReserveMinor: Math.round((econTotal * 8) / 100),
+    description: 'Safeguards core venue, dining, and photography while streamlining non-essential decor and styling additions.',
+    expenses: economicalExpenses,
+    keyHighlights: [
+      'Focuses 90% of funding on must-have contracts',
+      'Minimizes optional rentals and luxury amenities',
+      `Delivers estimated ${formatCurrencyMinor(Math.max(0, summary.plannedMinor + summary.confirmedMinor - econTotal), event.currency)} in overall cost relief`,
+    ],
+  };
+
+  // 2. Balanced Tier: Standard recommended, optimal 10% contingency
+  const balancedExpenses: ExpenseItem[] = expenses.map((item) => ({ ...item }));
+  const balancedSummary = calculateBudgetSummary(event, balancedExpenses);
+  const balTotal = balancedSummary.plannedMinor + balancedSummary.confirmedMinor;
+
+  const balanced: BudgetAlternativeOption = {
+    tier: 'balanced',
+    name: 'Balanced (Recommended)',
+    subtitle: 'Standard harmonious allocation with 10% safety reserve',
+    totalEstimatedMinor: balTotal,
+    varianceAgainstTotalMinor: event.totalBudgetMinor - balTotal,
+    contingencyReserveMinor: balancedSummary.contingencyReserveMinor,
+    description: 'Carefully balances premium guest hospitality with disciplined financial management.',
+    expenses: balancedExpenses,
+    keyHighlights: [
+      'Full coverage for ceremony, reception, and entertainment',
+      'Preserves 10% buffer against unexpected vendor adjustments',
+      'Maintains quality entertainment and ambient florals',
+    ],
+  };
+
+  // 3. Premium Tier: Luxury upgrades, elevated dining and experiences
+  const premiumExpenses: ExpenseItem[] = expenses.map((item) => {
+    if (item.status === 'confirmed' || item.status === 'paid') return { ...item };
+    if (item.categoryId === 'catering') {
+      return {
+        ...item,
+        estimatedCostMinor: Math.round(item.estimatedCostMinor * 1.25),
+        notes: `${item.notes || ''} [Premium Tier: Artisanal multi-course dining & top-shelf bar]`.trim(),
+      };
+    }
+    if (item.categoryId === 'decor') {
+      return {
+        ...item,
+        estimatedCostMinor: Math.round(item.estimatedCostMinor * 1.30),
+        notes: `${item.notes || ''} [Premium Tier: Expanded floral installations & architectural lighting]`.trim(),
+      };
+    }
+    if (item.categoryId === 'entertainment') {
+      return {
+        ...item,
+        estimatedCostMinor: Math.round(item.estimatedCostMinor * 1.25),
+        notes: `${item.notes || ''} [Premium Tier: Live musicians + DJ & interactive mirror booth]`.trim(),
+      };
+    }
+    if (item.priority === 'nice_to_have' || item.priority === 'optional') {
+      return {
+        ...item,
+        estimatedCostMinor: Math.round(item.estimatedCostMinor * 1.15),
+      };
+    }
+    return { ...item };
+  });
+
+  const premSummary = calculateBudgetSummary({ ...event, contingencyPercentage: 15 }, premiumExpenses);
+  const premTotal = premSummary.plannedMinor + premSummary.confirmedMinor;
+
+  const premium: BudgetAlternativeOption = {
+    tier: 'premium',
+    name: 'Premium (Luxury)',
+    subtitle: 'Elevated guest experience with top-tier culinary and sensory upgrades',
+    totalEstimatedMinor: premTotal,
+    varianceAgainstTotalMinor: event.totalBudgetMinor - premTotal,
+    contingencyReserveMinor: Math.round((premTotal * 15) / 100),
+    description: 'Elevates dinner service, open bar selections, live musical arrangements, and immersive venue lighting.',
+    expenses: premiumExpenses,
+    keyHighlights: [
+      'Top-shelf bar and artisanal multi-course culinary tasting',
+      'Lush overhead floral hanging canopies and custom lighting',
+      '15% expanded contingency cushion for VIP flexibility',
+    ],
+  };
+
+  return { economical, balanced, premium };
+}
+
+/**
+ * Applies a chosen budget planning alternative option to current expenses.
+ */
+export function applyBudgetAlternative(
+  currentExpenses: ExpenseItem[],
+  alternative: BudgetAlternativeOption
+): ExpenseItem[] {
+  const altMap = new Map(alternative.expenses.map((e) => [e.id, e]));
+  return currentExpenses.map((item) => {
+    const alt = altMap.get(item.id);
+    if (!alt) return item;
+    return {
+      ...item,
+      estimatedCostMinor: alt.estimatedCostMinor,
+      notes: alt.notes,
+    };
+  });
+}
+
