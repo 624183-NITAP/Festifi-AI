@@ -86,7 +86,7 @@ export const Header: React.FC<HeaderProps> = ({
               AI Engine:
             </span>
             <span style={{ color: 'var(--text-primary)', fontWeight: 700 }}>
-              {isAiLive ? 'Gemini 1.5 Live' : 'Offline Demo Mode'}
+              {isAiLive ? 'Gemini 2.0 Live' : 'Offline Demo Mode'}
             </span>
           </div>
 

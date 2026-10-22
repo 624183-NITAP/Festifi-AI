@@ -2,26 +2,17 @@
 
 import React, { useState } from 'react';
 import {
-  AlertCircle,
-  Check,
-  CheckCircle,
   Clock,
   Edit3,
-  Filter,
   Mail,
   Phone,
-  Plus,
   Search,
   Trash2,
   UserCheck,
   UserPlus,
-  Users,
   UserX,
-  Utensils,
-  X,
 } from 'lucide-react';
 import {
-  ALL_DIETARY_OPTIONS,
   calculateGuestStats,
   DIETARY_LABELS,
 } from '@/domain/guests';
@@ -31,6 +22,8 @@ import {
   GuestRecord,
   RsvpStatus,
 } from '@/domain/types';
+import { GuestFormModal } from './GuestFormModal';
+import { GuestStatsCards } from './GuestStatsCards';
 
 interface GuestManagerProps {
   event: EventDetails;
@@ -50,17 +43,6 @@ export const GuestManager: React.FC<GuestManagerProps> = ({
   const [showAddModal, setShowAddModal] = useState<boolean>(false);
   const [editingGuest, setEditingGuest] = useState<GuestRecord | null>(null);
 
-  // Form State
-  const [fullName, setFullName] = useState<string>('');
-  const [email, setEmail] = useState<string>('');
-  const [phone, setPhone] = useState<string>('');
-  const [rsvpStatus, setRsvpStatus] = useState<RsvpStatus>('pending');
-  const [dietary, setDietary] = useState<DietaryRestriction>('none');
-  const [dietaryNotes, setDietaryNotes] = useState<string>('');
-  const [plusOne, setPlusOne] = useState<boolean>(false);
-  const [tableAssignment, setTableAssignment] = useState<string>('');
-  const [formError, setFormError] = useState<string | null>(null);
-
   const stats = calculateGuestStats(guests);
 
   const filteredGuests = guests.filter((g) => {
@@ -77,77 +59,25 @@ export const GuestManager: React.FC<GuestManagerProps> = ({
 
   const handleOpenAddModal = () => {
     setEditingGuest(null);
-    setFullName('');
-    setEmail('');
-    setPhone('');
-    setRsvpStatus('pending');
-    setDietary('none');
-    setDietaryNotes('');
-    setPlusOne(false);
-    setTableAssignment('');
-    setFormError(null);
     setShowAddModal(true);
   };
 
   const handleOpenEditModal = (guest: GuestRecord) => {
     setEditingGuest(guest);
-    setFullName(guest.fullName);
-    setEmail(guest.email);
-    setPhone(guest.phone || '');
-    setRsvpStatus(guest.rsvpStatus);
-    setDietary(guest.dietaryPreference);
-    setDietaryNotes(guest.dietaryNotes || '');
-    setPlusOne(guest.plusOne);
-    setTableAssignment(guest.tableAssignment || '');
-    setFormError(null);
     setShowAddModal(true);
   };
 
-  const handleSaveGuest = (e: React.FormEvent) => {
-    e.preventDefault();
-    setFormError(null);
-
-    if (!fullName.trim()) {
-      setFormError('Guest name is required.');
-      return;
-    }
-
-    if (editingGuest) {
-      const updated = guests.map((g) =>
-        g.id === editingGuest.id
-          ? {
-              ...g,
-              fullName: fullName.trim(),
-              email: email.trim(),
-              phone: phone.trim(),
-              rsvpStatus,
-              dietaryPreference: dietary,
-              dietaryNotes: dietaryNotes.trim(),
-              plusOne,
-              tableAssignment: tableAssignment.trim(),
-              updatedAt: new Date().toISOString(),
-            }
-          : g
-      );
+  const handleSaveGuest = (saved: Omit<GuestRecord, 'id'> | GuestRecord) => {
+    if ('id' in saved && saved.id) {
+      const updated = guests.map((g) => (g.id === saved.id ? (saved as GuestRecord) : g));
       onUpdateGuests(updated);
     } else {
       const newGuest: GuestRecord = {
+        ...saved,
         id: `g-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-        fullName: fullName.trim(),
-        email: email.trim(),
-        phone: phone.trim(),
-        rsvpStatus,
-        dietaryPreference: dietary,
-        dietaryNotes: dietaryNotes.trim(),
-        plusOne,
-        tableAssignment: tableAssignment.trim(),
-        invitationSent: false,
-        updatedAt: new Date().toISOString(),
       };
       onUpdateGuests([...guests, newGuest]);
     }
-
-    setShowAddModal(false);
   };
 
   const handleDeleteGuest = (id: string) => {
@@ -217,64 +147,10 @@ export const GuestManager: React.FC<GuestManagerProps> = ({
       </div>
 
       {/* KPI Stats Bar */}
-      <section
-        aria-label="Guest RSVP Statistics"
-        style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '14px' }}
-      >
-        <div className="glass-card" style={{ padding: '18px', borderRadius: '16px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-secondary)', fontSize: '0.825rem' }}>
-            <span>Total Invited</span>
-            <Users size={18} color="#94a3b8" aria-hidden="true" />
-          </div>
-          <div style={{ fontSize: '1.6rem', fontWeight: 800, color: '#ffffff', margin: '6px 0 2px' }}>
-            {stats.totalInvited}
-          </div>
-          <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-            Target: {event.guestCount} capacity
-          </span>
-        </div>
-
-        <div className="glass-card" style={{ padding: '18px', borderRadius: '16px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-secondary)', fontSize: '0.825rem' }}>
-            <span>Confirmed Attending</span>
-            <UserCheck size={18} color="#34d399" aria-hidden="true" />
-          </div>
-          <div style={{ fontSize: '1.6rem', fontWeight: 800, color: '#34d399', margin: '6px 0 2px' }}>
-            {stats.attending}
-          </div>
-          <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-            +{stats.plusOnesCount} plus-ones = {stats.totalExpectedHeadcount} total seats
-          </span>
-        </div>
-
-        <div className="glass-card" style={{ padding: '18px', borderRadius: '16px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-secondary)', fontSize: '0.825rem' }}>
-            <span>Awaiting RSVP</span>
-            <Clock size={18} color="#f59e0b" aria-hidden="true" />
-          </div>
-          <div style={{ fontSize: '1.6rem', fontWeight: 800, color: '#fbbf24', margin: '6px 0 2px' }}>
-            {stats.pending}
-          </div>
-          <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-            Response rate: {stats.responseRatePercentage}%
-          </span>
-        </div>
-
-        <div className="glass-card" style={{ padding: '18px', borderRadius: '16px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-secondary)', fontSize: '0.825rem' }}>
-            <span>Dietary Restrictions</span>
-            <Utensils size={18} color="#ec4899" aria-hidden="true" />
-          </div>
-          <div style={{ fontSize: '1.6rem', fontWeight: 800, color: '#ec4899', margin: '6px 0 2px' }}>
-            {Object.entries(stats.dietaryBreakdown)
-              .filter(([key, count]) => key !== 'none' && count > 0)
-              .reduce((acc, [, c]) => acc + c, 0)}
-          </div>
-          <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-            Special meals required
-          </span>
-        </div>
-      </section>
+      <GuestStatsCards
+        stats={stats}
+        targetCapacity={event.guestCount}
+      />
 
       {/* Filter and Search Bar */}
       <div
@@ -368,34 +244,46 @@ export const GuestManager: React.FC<GuestManagerProps> = ({
                               guest.rsvpStatus === 'attending'
                                 ? 'badge-confirmed'
                                 : guest.rsvpStatus === 'declined'
-                                ? 'badge-overdue'
+                                ? 'badge-declined'
                                 : 'badge-pending'
                             }`}
                             style={{ textTransform: 'capitalize' }}
                           >
                             {guest.rsvpStatus}
                           </span>
-                          <div style={{ display: 'flex', gap: '2px' }}>
+
+                          <div style={{ display: 'inline-flex', gap: '4px' }}>
                             {guest.rsvpStatus !== 'attending' && (
                               <button
                                 type="button"
-                                className="btn-icon"
+                                className="btn-icon text-success"
                                 onClick={() => handleQuickStatusChange(guest.id, 'attending')}
-                                title="Mark Attending"
-                                aria-label={`Mark ${guest.fullName} attending`}
+                                title="Mark as Attending"
+                                aria-label={`Mark ${guest.fullName} as attending`}
                               >
-                                <Check size={14} color="#34d399" />
+                                <UserCheck size={14} />
                               </button>
                             )}
                             {guest.rsvpStatus !== 'declined' && (
                               <button
                                 type="button"
-                                className="btn-icon"
+                                className="btn-icon text-danger"
                                 onClick={() => handleQuickStatusChange(guest.id, 'declined')}
-                                title="Mark Declined"
-                                aria-label={`Mark ${guest.fullName} declined`}
+                                title="Mark as Declined"
+                                aria-label={`Mark ${guest.fullName} as declined`}
                               >
-                                <X size={14} color="#f87171" />
+                                <UserX size={14} />
+                              </button>
+                            )}
+                            {guest.rsvpStatus !== 'pending' && (
+                              <button
+                                type="button"
+                                className="btn-icon"
+                                onClick={() => handleQuickStatusChange(guest.id, 'pending')}
+                                title="Reset to Pending"
+                                aria-label={`Reset ${guest.fullName} to pending`}
+                              >
+                                <Clock size={14} />
                               </button>
                             )}
                           </div>
@@ -468,150 +356,11 @@ export const GuestManager: React.FC<GuestManagerProps> = ({
 
       {/* Add / Edit Guest Modal */}
       {showAddModal && (
-        <div className="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="guest-modal-title">
-          <div className="modal-content animate-fade-in" style={{ maxWidth: '520px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px' }}>
-              <h3 id="guest-modal-title" style={{ fontSize: '1.2rem', fontWeight: 700 }}>
-                {editingGuest ? 'Edit Guest Record' : 'Add New Guest'}
-              </h3>
-              <button
-                type="button"
-                className="btn btn-secondary btn-sm"
-                onClick={() => setShowAddModal(false)}
-                aria-label="Close guest dialog"
-              >
-                <X size={16} aria-hidden="true" />
-              </button>
-            </div>
-
-            {formError && (
-              <div style={{ background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.3)', padding: '10px 14px', borderRadius: '10px', color: '#fca5a5', fontSize: '0.85rem', marginBottom: '16px' }} role="alert">
-                {formError}
-              </div>
-            )}
-
-            <form onSubmit={handleSaveGuest} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-              <div>
-                <label className="input-label" htmlFor="guest-name">Full Name *</label>
-                <input
-                  id="guest-name"
-                  type="text"
-                  className="input-field"
-                  value={fullName}
-                  onChange={(e) => setFullName(e.target.value)}
-                  placeholder="e.g. Dr. Jordan Hayes"
-                  required
-                />
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                <div>
-                  <label className="input-label" htmlFor="guest-email">Email Address</label>
-                  <input
-                    id="guest-email"
-                    type="email"
-                    className="input-field"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="jordan@example.com"
-                  />
-                </div>
-                <div>
-                  <label className="input-label" htmlFor="guest-phone">Phone Number</label>
-                  <input
-                    id="guest-phone"
-                    type="tel"
-                    className="input-field"
-                    value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
-                    placeholder="+1 555-019-0022"
-                  />
-                </div>
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                <div>
-                  <label className="input-label" htmlFor="guest-rsvp">RSVP Status</label>
-                  <select
-                    id="guest-rsvp"
-                    className="select-field"
-                    value={rsvpStatus}
-                    onChange={(e) => setRsvpStatus(e.target.value as RsvpStatus)}
-                  >
-                    <option value="pending">Pending</option>
-                    <option value="attending">Attending</option>
-                    <option value="declined">Declined</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="input-label" htmlFor="guest-table">Table Assignment</label>
-                  <input
-                    id="guest-table"
-                    type="text"
-                    className="input-field"
-                    value={tableAssignment}
-                    onChange={(e) => setTableAssignment(e.target.value)}
-                    placeholder="e.g. Table 3 (Orchid)"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="input-label" htmlFor="guest-diet">Dietary Requirement</label>
-                <select
-                  id="guest-diet"
-                  className="select-field"
-                  value={dietary}
-                  onChange={(e) => setDietary(e.target.value as DietaryRestriction)}
-                >
-                  {ALL_DIETARY_OPTIONS.map((opt) => (
-                    <option key={opt} value={opt}>
-                      {DIETARY_LABELS[opt]}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="input-label" htmlFor="guest-notes">Dietary Notes / Allergy Severity</label>
-                <input
-                  id="guest-notes"
-                  type="text"
-                  className="input-field"
-                  value={dietaryNotes}
-                  onChange={(e) => setDietaryNotes(e.target.value)}
-                  placeholder="e.g. Severe peanut contact allergy; requires gluten-free cookware"
-                />
-              </div>
-
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 0' }}>
-                <input
-                  id="guest-plus-one"
-                  type="checkbox"
-                  checked={plusOne}
-                  onChange={(e) => setPlusOne(e.target.checked)}
-                  style={{ width: '18px', height: '18px', accentColor: 'var(--accent-gold)' }}
-                />
-                <label htmlFor="guest-plus-one" style={{ fontSize: '0.875rem', cursor: 'pointer' }}>
-                  Includes Plus-One guest seating (+1)
-                </label>
-              </div>
-
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '12px' }}>
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  onClick={() => setShowAddModal(false)}
-                >
-                  Cancel
-                </button>
-                <button type="submit" className="btn btn-gold">
-                  {editingGuest ? 'Save Changes' : 'Add Guest'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
+        <GuestFormModal
+          editingGuest={editingGuest}
+          onClose={() => setShowAddModal(false)}
+          onSave={handleSaveGuest}
+        />
       )}
     </div>
   );

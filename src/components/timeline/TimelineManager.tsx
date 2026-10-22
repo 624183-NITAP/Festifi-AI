@@ -12,16 +12,14 @@ import {
   Trash2,
   AlertCircle,
   Sparkles,
-  X,
 } from 'lucide-react';
 import {
   areTaskDependenciesSatisfied,
-  calculateDeadline,
   calculateTimelineProgress,
   formatDateReadable,
-  isValidIsoDate,
 } from '@/domain/timeline';
-import { BudgetCategory, EventDetails, PriorityLevel, TimelineTask } from '@/domain/types';
+import { EventDetails, TimelineTask } from '@/domain/types';
+import { TaskFormModal } from './TaskFormModal';
 
 interface TimelineManagerProps {
   event: EventDetails;
@@ -38,15 +36,6 @@ export const TimelineManager: React.FC<TimelineManagerProps> = ({
   const [showAddModal, setShowAddModal] = useState<boolean>(false);
   const [editingTask, setEditingTask] = useState<TimelineTask | null>(null);
 
-  // Form state
-  const [taskTitle, setTaskTitle] = useState<string>('');
-  const [taskDescription, setTaskDescription] = useState<string>('');
-  const [taskCategory, setTaskCategory] = useState<TimelineTask['category']>('general');
-  const [taskDaysBefore, setTaskDaysBefore] = useState<number>(30);
-  const [taskPriority, setTaskPriority] = useState<PriorityLevel>('must_have');
-  const [taskMilestone, setTaskMilestone] = useState<string>('Key Milestone');
-  const [formError, setFormError] = useState<string | null>(null);
-
   const progress = calculateTimelineProgress(tasks);
 
   const filteredTasks = tasks.filter((t) => {
@@ -61,25 +50,11 @@ export const TimelineManager: React.FC<TimelineManagerProps> = ({
 
   const handleOpenAddModal = () => {
     setEditingTask(null);
-    setTaskTitle('');
-    setTaskDescription('');
-    setTaskCategory('general');
-    setTaskDaysBefore(30);
-    setTaskPriority('must_have');
-    setTaskMilestone('Key Milestone');
-    setFormError(null);
     setShowAddModal(true);
   };
 
   const handleOpenEditModal = (task: TimelineTask) => {
     setEditingTask(task);
-    setTaskTitle(task.title);
-    setTaskDescription(task.description);
-    setTaskCategory(task.category);
-    setTaskDaysBefore(task.daysBeforeEvent);
-    setTaskPriority(task.priority);
-    setTaskMilestone(task.milestone);
-    setFormError(null);
     setShowAddModal(true);
   };
 
@@ -117,61 +92,17 @@ export const TimelineManager: React.FC<TimelineManagerProps> = ({
     onUpdateTasks(tasks.filter((t) => t.id !== taskId));
   };
 
-  const handleSaveTask = (e: React.FormEvent) => {
-    e.preventDefault();
-    setFormError(null);
-
-    if (!taskTitle.trim()) {
-      setFormError('Task title is required.');
-      return;
-    }
-
-    if (taskDaysBefore < 0) {
-      setFormError('Days before event cannot be negative (chronological violation: deadline cannot be after the event).');
-      return;
-    }
-
-    if (!isValidIsoDate(event.targetDate)) {
-      setFormError('Event target date is invalid.');
-      return;
-    }
-
-    const deadline = calculateDeadline(event.targetDate, taskDaysBefore);
-
-    if (editingTask) {
-      const updated = tasks.map((t) =>
-        t.id === editingTask.id
-          ? {
-              ...t,
-              title: taskTitle.trim(),
-              description: taskDescription.trim(),
-              category: taskCategory,
-              deadline,
-              daysBeforeEvent: taskDaysBefore,
-              priority: taskPriority,
-              milestone: taskMilestone.trim() || 'Key Milestone',
-            }
-          : t
-      );
+  const handleSaveTask = (saved: Omit<TimelineTask, 'id'> | TimelineTask) => {
+    if ('id' in saved && saved.id) {
+      const updated = tasks.map((t) => (t.id === saved.id ? (saved as TimelineTask) : t));
       onUpdateTasks(updated);
     } else {
       const newTask: TimelineTask = {
+        ...saved,
         id: `task-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-        title: taskTitle.trim(),
-        description: taskDescription.trim(),
-        category: taskCategory,
-        deadline,
-        daysBeforeEvent: taskDaysBefore,
-        completed: false,
-        completedAt: null,
-        priority: taskPriority,
-        dependencies: [],
-        milestone: taskMilestone.trim() || 'Key Milestone',
       };
       onUpdateTasks([...tasks, newTask]);
     }
-
-    setShowAddModal(false);
   };
 
   // Group filtered tasks by milestone
@@ -201,40 +132,49 @@ export const TimelineManager: React.FC<TimelineManagerProps> = ({
           type="button"
           className="btn btn-primary btn-sm"
           onClick={handleOpenAddModal}
-          aria-label="Add custom milestone task"
+          aria-label="Add new timeline task"
         >
           <Plus size={16} aria-hidden="true" />
           <span>Add Task</span>
         </button>
       </div>
 
-      {/* Progress Bar & Metric Gauges */}
+      {/* Progress Metric Banner */}
       <section
         className="glass-card"
         style={{ padding: '24px', borderRadius: '18px' }}
-        aria-label="Timeline progress status"
+        aria-labelledby="timeline-progress-heading"
       >
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <Sparkles size={18} color="var(--accent-gold)" aria-hidden="true" />
-            <strong style={{ fontSize: '1rem', color: '#ffffff' }}>
-              Overall Timeline Progress
-            </strong>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px', marginBottom: '14px' }}>
+          <div>
+            <h3 id="timeline-progress-heading" style={{ fontSize: '1.15rem', fontWeight: 700 }}>
+              Timeline Execution Progress: {progress.completionPercentage}%
+            </h3>
+            <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+              {progress.completedTasks} of {progress.totalTasks} milestones completed
+            </span>
           </div>
-          <span style={{ fontSize: '1.1rem', fontWeight: 800, color: '#34d399' }}>
-            {progress.completionPercentage}% Complete
-          </span>
+
+          <div style={{ display: 'flex', gap: '12px' }}>
+            {progress.overdueTasks > 0 && (
+              <span className="badge badge-must-have" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <AlertCircle size={14} aria-hidden="true" />
+                <span>{progress.overdueTasks} Overdue</span>
+              </span>
+            )}
+            <span className="badge" style={{ background: 'rgba(56, 189, 248, 0.2)', color: '#38bdf8' }}>
+              {progress.pendingTasks} Pending
+            </span>
+          </div>
         </div>
 
-        {/* Progress bar line */}
+        {/* Progress Bar */}
         <div
           style={{
-            width: '100%',
-            height: '10px',
+            height: '8px',
             background: 'rgba(255, 255, 255, 0.08)',
-            borderRadius: '999px',
+            borderRadius: '8px',
             overflow: 'hidden',
-            marginBottom: '16px',
           }}
           role="progressbar"
           aria-valuenow={progress.completionPercentage}
@@ -243,126 +183,142 @@ export const TimelineManager: React.FC<TimelineManagerProps> = ({
         >
           <div
             style={{
-              width: `${progress.completionPercentage}%`,
               height: '100%',
-              background: 'linear-gradient(90deg, #10b981 0%, #38bdf8 100%)',
+              width: `${progress.completionPercentage}%`,
+              background: 'linear-gradient(to right, #f59e0b, #10b981)',
+              borderRadius: '8px',
               transition: 'width 0.4s ease',
             }}
           />
         </div>
-
-        <div style={{ display: 'flex', gap: '24px', flexWrap: 'wrap', fontSize: '0.85rem' }}>
-          <div>Total Tasks: <strong style={{ color: '#ffffff' }}>{progress.totalTasks}</strong></div>
-          <div>Completed: <strong style={{ color: '#34d399' }}>{progress.completedTasks}</strong></div>
-          <div>Pending: <strong style={{ color: '#60a5fa' }}>{progress.pendingTasks}</strong></div>
-          {progress.overdueTasks > 0 && (
-            <div>Overdue: <strong style={{ color: '#f87171' }}>{progress.overdueTasks}</strong></div>
-          )}
-        </div>
       </section>
 
       {/* Filter Tabs */}
-      <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
-        <Filter size={16} color="var(--text-secondary)" aria-hidden="true" />
-        {(['all', 'pending', 'completed', 'overdue'] as const).map((filter) => (
+      <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }} role="tablist" aria-label="Filter timeline milestones">
+        {(['all', 'pending', 'completed', 'overdue'] as const).map((filterKey) => (
           <button
-            key={filter}
+            key={filterKey}
             type="button"
-            className={`btn btn-sm ${filterStatus === filter ? 'btn-primary' : 'btn-secondary'}`}
-            onClick={() => setFilterStatus(filter)}
-            aria-pressed={filterStatus === filter}
+            className={`btn ${filterStatus === filterKey ? 'btn-gold' : 'btn-secondary'} btn-sm`}
+            onClick={() => setFilterStatus(filterKey)}
+            style={{ textTransform: 'capitalize' }}
           >
-            {filter.toUpperCase()}
+            {filterKey === 'all'
+              ? `All Tasks (${tasks.length})`
+              : `${filterKey} (${
+                  filterKey === 'completed'
+                    ? progress.completedTasks
+                    : filterKey === 'pending'
+                    ? progress.pendingTasks
+                    : progress.overdueTasks
+                })`}
           </button>
         ))}
       </div>
 
-      {/* Grouped Tasks by Milestone */}
+      {/* Grouped Milestone Sections */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-        {Array.from(milestoneMap.entries()).map(([milestone, items]) => (
+        {Array.from(milestoneMap.entries()).map(([milestoneName, mTasks]) => (
           <section
-            key={milestone}
+            key={milestoneName}
             className="glass-card"
-            style={{ padding: '22px', borderRadius: '16px' }}
-            aria-labelledby={`milestone-${milestone.replace(/\s+/g, '-').toLowerCase()}`}
+            style={{ padding: '20px 24px', borderRadius: '16px' }}
+            aria-labelledby={`milestone-${milestoneName.replace(/\s+/g, '-').toLowerCase()}`}
           >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px', borderBottom: '1px solid var(--border-subtle)', paddingBottom: '8px' }}>
-              <Calendar size={18} color="var(--accent-gold)" aria-hidden="true" />
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px' }}>
+              <Clock size={18} color="var(--accent-gold)" aria-hidden="true" />
               <h3
-                id={`milestone-${milestone.replace(/\s+/g, '-').toLowerCase()}`}
-                style={{ fontSize: '1.05rem', fontWeight: 700, color: 'var(--accent-gold)' }}
+                id={`milestone-${milestoneName.replace(/\s+/g, '-').toLowerCase()}`}
+                style={{ fontSize: '1.05rem', fontWeight: 700 }}
               >
-                {milestone}
+                {milestoneName}
               </h3>
+              <span className="badge" style={{ marginLeft: 'auto', background: 'rgba(255, 255, 255, 0.05)', color: 'var(--text-muted)' }}>
+                {mTasks.length} {mTasks.length === 1 ? 'Task' : 'Tasks'}
+              </span>
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              {items.map((task) => {
-                const depsSatisfied = areTaskDependenciesSatisfied(task, tasks);
+              {mTasks.map((task) => {
+                const depsOk = areTaskDependenciesSatisfied(task, tasks);
                 const isOverdue = !task.completed && task.deadline < new Date().toISOString().split('T')[0];
 
                 return (
                   <div
                     key={task.id}
                     style={{
+                      background: task.completed
+                        ? 'rgba(16, 185, 129, 0.04)'
+                        : isOverdue
+                        ? 'rgba(239, 68, 68, 0.04)'
+                        : 'rgba(255, 255, 255, 0.02)',
+                      border: task.completed
+                        ? '1px solid rgba(16, 185, 129, 0.2)'
+                        : isOverdue
+                        ? '1px solid rgba(239, 68, 68, 0.3)'
+                        : '1px solid var(--border-subtle)',
+                      borderRadius: '12px',
+                      padding: '14px 16px',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'space-between',
-                      background: task.completed ? 'rgba(16, 185, 129, 0.05)' : 'rgba(15, 23, 42, 0.6)',
-                      border: isOverdue ? '1px solid rgba(239, 68, 68, 0.4)' : '1px solid var(--border-subtle)',
-                      borderRadius: '12px',
-                      padding: '12px 16px',
+                      flexWrap: 'wrap',
                       gap: '12px',
                     }}
                   >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: '1', minWidth: '240px' }}>
                       <input
                         type="checkbox"
                         checked={task.completed}
                         onChange={() => handleToggleTask(task.id)}
-                        id={`check-${task.id}`}
                         style={{
-                          width: '20px',
-                          height: '20px',
-                          cursor: 'pointer',
+                          width: '18px',
+                          height: '18px',
                           accentColor: 'var(--accent-gold)',
+                          cursor: 'pointer',
                         }}
-                        aria-label={`Mark "${task.title}" as ${task.completed ? 'incomplete' : 'complete'}`}
+                        aria-label={`Mark "${task.title}" as ${task.completed ? 'incomplete' : 'completed'}`}
                       />
 
                       <div>
-                        <label
-                          htmlFor={`check-${task.id}`}
-                          style={{
-                            fontWeight: 600,
-                            fontSize: '0.925rem',
-                            color: task.completed ? 'var(--text-muted)' : 'var(--text-primary)',
-                            textDecoration: task.completed ? 'line-through' : 'none',
-                            cursor: 'pointer',
-                          }}
-                        >
-                          {task.title}
-                        </label>
-
-                        <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap', marginTop: '4px', fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
-                          <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                            <Clock size={12} aria-hidden="true" />
-                            Target: {formatDateReadable(task.deadline)} ({task.daysBeforeEvent}d before)
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                          <span
+                            style={{
+                              fontWeight: 600,
+                              color: task.completed ? 'var(--text-muted)' : 'var(--text-primary)',
+                              textDecoration: task.completed ? 'line-through' : 'none',
+                            }}
+                          >
+                            {task.title}
                           </span>
                           <span className={`badge badge-${task.priority.replace(/_/g, '-')}`}>
                             {task.priority.replace(/_/g, ' ')}
                           </span>
-                          {!depsSatisfied && (
-                            <span style={{ color: '#f87171', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                              <AlertCircle size={12} aria-hidden="true" />
-                              Prerequisites pending
+                          {isOverdue && (
+                            <span className="badge" style={{ background: 'rgba(239, 68, 68, 0.2)', color: '#f87171' }}>
+                              Overdue
+                            </span>
+                          )}
+                        </div>
+
+                        {task.description && (
+                          <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', margin: '4px 0 0' }}>
+                            {task.description}
+                          </p>
+                        )}
+
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '4px' }}>
+                          <span>Target: {formatDateReadable(task.deadline)} ({task.daysBeforeEvent} days before)</span>
+                          {!depsOk && (
+                            <span style={{ color: '#fbbf24' }}>
+                              Prerequisites incomplete
                             </span>
                           )}
                         </div>
                       </div>
                     </div>
 
-                    <div style={{ display: 'flex', gap: '6px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                       <button
                         type="button"
                         className="btn btn-secondary btn-sm"
@@ -392,126 +348,12 @@ export const TimelineManager: React.FC<TimelineManagerProps> = ({
 
       {/* Add / Edit Task Modal */}
       {showAddModal && (
-        <div className="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="task-modal-heading">
-          <div className="modal-content animate-fade-in" style={{ maxWidth: '520px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px' }}>
-              <h3 id="task-modal-heading" style={{ fontSize: '1.25rem', fontWeight: 700 }}>
-                {editingTask ? 'Edit Milestone Task' : 'Add Timeline Task'}
-              </h3>
-              <button
-                type="button"
-                className="btn btn-secondary btn-sm"
-                onClick={() => setShowAddModal(false)}
-                aria-label="Close task dialog"
-              >
-                <X size={16} aria-hidden="true" />
-              </button>
-            </div>
-
-            {formError && (
-              <div
-                style={{
-                  background: 'rgba(239, 68, 68, 0.1)',
-                  border: '1px solid rgba(239, 68, 68, 0.3)',
-                  padding: '10px 14px',
-                  borderRadius: '10px',
-                  color: '#fca5a5',
-                  fontSize: '0.85rem',
-                  marginBottom: '16px',
-                }}
-                role="alert"
-              >
-                {formError}
-              </div>
-            )}
-
-            <form onSubmit={handleSaveTask}>
-              <div className="form-group">
-                <label htmlFor="task-title" className="form-label">Task Title *</label>
-                <input
-                  id="task-title"
-                  type="text"
-                  className="form-input"
-                  placeholder="e.g. Schedule final floral walkthrough"
-                  value={taskTitle}
-                  onChange={(e) => setTaskTitle(e.target.value)}
-                  required
-                />
-              </div>
-
-              <div className="form-group">
-                <label htmlFor="task-desc" className="form-label">Description / Instructions</label>
-                <input
-                  id="task-desc"
-                  type="text"
-                  className="form-input"
-                  placeholder="e.g. Confirm table height and lighting setup with florist"
-                  value={taskDescription}
-                  onChange={(e) => setTaskDescription(e.target.value)}
-                />
-              </div>
-
-              <div className="form-group">
-                <label htmlFor="task-milestone" className="form-label">Milestone Group</label>
-                <input
-                  id="task-milestone"
-                  type="text"
-                  className="form-input"
-                  placeholder="e.g. 1 Month Before"
-                  value={taskMilestone}
-                  onChange={(e) => setTaskMilestone(e.target.value)}
-                  required
-                />
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
-                <div className="form-group">
-                  <label htmlFor="task-days" className="form-label">Days Before Event</label>
-                  <input
-                    id="task-days"
-                    type="number"
-                    min="0"
-                    max="730"
-                    className="form-input"
-                    value={taskDaysBefore}
-                    onChange={(e) => setTaskDaysBefore(Number(e.target.value))}
-                    required
-                  />
-                  <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '4px', display: 'block' }}>
-                    Deadline: {isValidIsoDate(event.targetDate) ? calculateDeadline(event.targetDate, taskDaysBefore) : 'N/A'}
-                  </span>
-                </div>
-
-                <div className="form-group">
-                  <label htmlFor="task-priority" className="form-label">Priority</label>
-                  <select
-                    id="task-priority"
-                    className="form-select"
-                    value={taskPriority}
-                    onChange={(e) => setTaskPriority(e.target.value as PriorityLevel)}
-                  >
-                    <option value="must_have">Must-Have</option>
-                    <option value="nice_to_have">Nice-To-Have</option>
-                    <option value="optional">Optional</option>
-                  </select>
-                </div>
-              </div>
-
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '20px' }}>
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  onClick={() => setShowAddModal(false)}
-                >
-                  Cancel
-                </button>
-                <button type="submit" className="btn btn-primary">
-                  {editingTask ? 'Save Changes' : 'Create Task'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
+        <TaskFormModal
+          event={event}
+          editingTask={editingTask}
+          onClose={() => setShowAddModal(false)}
+          onSave={handleSaveTask}
+        />
       )}
     </div>
   );

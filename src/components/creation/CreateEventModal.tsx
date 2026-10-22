@@ -42,7 +42,7 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
     try {
       if (forceOffline) {
         // Direct offline fallback without making network request
-        const { DeterministicDemoAIProvider } = await import('@/domain/ai');
+        const { DeterministicDemoAIProvider } = await import('@/domain/ai/deterministic');
         const demoProvider = new DeterministicDemoAIProvider();
         const demoRes = await demoProvider.generateEventPlan(eventToPlan);
         onCreateEvent(eventToPlan, demoRes.plan, {

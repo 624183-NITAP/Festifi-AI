@@ -3,14 +3,11 @@
 import React, { useEffect, useState } from 'react';
 import {
   AlertTriangle,
-  ArrowRight,
   Bot,
   Calendar,
   CheckCircle2,
   Clock,
   CloudRain,
-  DollarSign,
-  HelpCircle,
   RefreshCw,
   Send,
   ShieldAlert,
@@ -18,8 +15,7 @@ import {
   TrendingDown,
   X,
 } from 'lucide-react';
-import { calculateBudgetSummary, formatCurrencyMinor } from '@/domain/budget';
-import { calculateDeadline, isValidIsoDate } from '@/domain/timeline';
+import { applyCopilotResult } from '@/domain/ai/copilot';
 import {
   CopilotActionType,
   CopilotResult,
@@ -27,6 +23,8 @@ import {
   ExpenseItem,
   TimelineTask,
 } from '@/domain/types';
+import { CopilotRealismCard } from './CopilotRealismCard';
+import { CopilotDiffView } from './CopilotDiffView';
 
 interface AICopilotModalProps {
   event: EventDetails;
@@ -109,8 +107,6 @@ export const AICopilotModal: React.FC<AICopilotModalProps> = ({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [onClose]);
 
-  const budgetSummary = calculateBudgetSummary(event, expenses);
-
   const handleRunCopilot = async (actionType: CopilotActionType, promptText: string) => {
     setIsLoading(true);
     setErrorMessage(null);
@@ -161,111 +157,8 @@ export const AICopilotModal: React.FC<AICopilotModalProps> = ({
   const handleApplyConfirmed = () => {
     if (!result) return;
 
-    let updatedExpenses: ExpenseItem[] | undefined = undefined;
-    let updatedTasks: TimelineTask[] | undefined = undefined;
-    let updatedEvent: Partial<EventDetails> | undefined = undefined;
-
-    // Apply expense changes
-    if (result.proposedExpenseChanges && result.proposedExpenseChanges.length > 0) {
-      const expenseMap = new Map(expenses.map((e) => [e.id, e]));
-
-      for (const change of result.proposedExpenseChanges) {
-        if (change.action === 'remove' && change.id) {
-          expenseMap.delete(change.id);
-        } else if (change.action === 'update' && change.id) {
-          const existing = expenseMap.get(change.id);
-          if (existing) {
-            expenseMap.set(change.id, {
-              ...existing,
-              name: change.name || existing.name,
-              categoryId: change.categoryId || existing.categoryId,
-              estimatedCostMinor: change.estimatedCostMinor,
-              notes: `${existing.notes || ''} [Copilot: ${change.rationale}]`.trim(),
-            });
-          }
-        } else if (change.action === 'add') {
-          const newId = `exp-copilot-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
-          expenseMap.set(newId, {
-            id: newId,
-            categoryId: change.categoryId,
-            name: change.name,
-            estimatedCostMinor: change.estimatedCostMinor,
-            actualCostMinor: null,
-            paidMinor: 0,
-            status: 'planned',
-            priority: 'must_have',
-            notes: `Copilot Recommendation: ${change.rationale}`,
-          });
-        }
-      }
-
-      updatedExpenses = Array.from(expenseMap.values());
-    }
-
-    // Apply task changes
-    if (result.proposedTaskChanges && result.proposedTaskChanges.length > 0) {
-      const taskMap = new Map(tasks.map((t) => [t.id, t]));
-
-      for (const tChange of result.proposedTaskChanges) {
-        if (tChange.action === 'add') {
-          const newId = `task-copilot-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
-          const deadline =
-            tChange.deadline ||
-            (isValidIsoDate(event.targetDate)
-              ? calculateDeadline(event.targetDate, tChange.daysBeforeEvent)
-              : event.targetDate);
-
-          taskMap.set(newId, {
-            id: newId,
-            title: tChange.title,
-            description: tChange.description,
-            category: tChange.category,
-            daysBeforeEvent: tChange.daysBeforeEvent,
-            deadline,
-            completed: false,
-            completedAt: null,
-            priority: tChange.priority,
-            dependencies: [],
-            milestone: tChange.milestone,
-          });
-        } else if (tChange.action === 'update' && tChange.id) {
-          const existing = taskMap.get(tChange.id);
-          if (existing) {
-            const deadline =
-              tChange.deadline ||
-              (isValidIsoDate(event.targetDate)
-                ? calculateDeadline(event.targetDate, tChange.daysBeforeEvent)
-                : existing.deadline);
-
-            taskMap.set(tChange.id, {
-              ...existing,
-              title: tChange.title || existing.title,
-              description: tChange.description || existing.description,
-              daysBeforeEvent: tChange.daysBeforeEvent,
-              deadline,
-            });
-          }
-        }
-      }
-
-      updatedTasks = Array.from(taskMap.values());
-    }
-
-    // Apply event changes
-    if (result.proposedEventChanges) {
-      updatedEvent = {
-        ...result.proposedEventChanges,
-        updatedAt: new Date().toISOString(),
-      };
-    }
-
-    onApplyChanges({
-      updatedEvent,
-      updatedExpenses,
-      updatedTasks,
-      summaryMessage: result.summary,
-    });
-
+    const applied = applyCopilotResult({ event, expenses, tasks }, result);
+    onApplyChanges(applied);
     onClose();
   };
 
@@ -540,187 +433,16 @@ export const AICopilotModal: React.FC<AICopilotModalProps> = ({
 
               {/* Realism Analysis if present */}
               {result.realismAnalysis && (
-                <div
-                  className="glass-card"
-                  style={{
-                    padding: '20px',
-                    borderRadius: '16px',
-                    border: '1px solid var(--border-subtle)',
-                  }}
-                >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
-                    <strong style={{ fontSize: '1rem', color: '#ffffff' }}>
-                      Feasibility Assessment
-                    </strong>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Score:</span>
-                      <span
-                        className="badge"
-                        style={{
-                          fontSize: '1rem',
-                          fontWeight: 800,
-                          background:
-                            result.realismAnalysis.feasibilityScore >= 80
-                              ? 'rgba(16, 185, 129, 0.2)'
-                              : result.realismAnalysis.feasibilityScore >= 55
-                              ? 'rgba(245, 158, 11, 0.2)'
-                              : 'rgba(239, 68, 68, 0.2)',
-                          color:
-                            result.realismAnalysis.feasibilityScore >= 80
-                              ? '#34d399'
-                              : result.realismAnalysis.feasibilityScore >= 55
-                              ? '#fbbf24'
-                              : '#f87171',
-                        }}
-                      >
-                        {result.realismAnalysis.feasibilityScore} / 100
-                      </span>
-                    </div>
-                  </div>
-
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '14px' }}>
-                    <div style={{ background: 'rgba(255, 255, 255, 0.02)', padding: '12px 14px', borderRadius: '10px' }}>
-                      <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#fbbf24' }}>Budget Critique</span>
-                      <ul style={{ margin: '6px 0 0 16px', fontSize: '0.825rem', color: 'var(--text-secondary)' }}>
-                        {result.realismAnalysis.budgetCritique.map((crit, idx) => (
-                          <li key={idx} style={{ marginBottom: '4px' }}>{crit}</li>
-                        ))}
-                      </ul>
-                    </div>
-
-                    <div style={{ background: 'rgba(255, 255, 255, 0.02)', padding: '12px 14px', borderRadius: '10px' }}>
-                      <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#38bdf8' }}>Timeline & Schedule Critique</span>
-                      <ul style={{ margin: '6px 0 0 16px', fontSize: '0.825rem', color: 'var(--text-secondary)' }}>
-                        {result.realismAnalysis.scheduleCritique.map((crit, idx) => (
-                          <li key={idx} style={{ marginBottom: '4px' }}>{crit}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  </div>
-                </div>
+                <CopilotRealismCard analysis={result.realismAnalysis} />
               )}
 
-              {/* Proposed Expense Changes Preview */}
-              {result.proposedExpenseChanges && result.proposedExpenseChanges.length > 0 && (
-                <div>
-                  <h4 style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: '10px' }}>
-                    Proposed Budget Adjustments ({result.proposedExpenseChanges.length})
-                  </h4>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                    {result.proposedExpenseChanges.map((change, idx) => (
-                      <div
-                        key={idx}
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'space-between',
-                          padding: '12px 16px',
-                          background: 'rgba(255, 255, 255, 0.03)',
-                          border: '1px solid var(--border-subtle)',
-                          borderRadius: '10px',
-                          flexWrap: 'wrap',
-                          gap: '10px',
-                        }}
-                      >
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <strong style={{ fontSize: '0.9rem' }}>{change.name}</strong>
-                            <span className="badge" style={{ textTransform: 'capitalize' }}>
-                              {change.categoryId}
-                            </span>
-                          </div>
-                          <span style={{ fontSize: '0.775rem', color: 'var(--text-muted)' }}>
-                            {change.rationale}
-                          </span>
-                        </div>
-
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                          <span
-                            className={`badge ${
-                              change.deltaMinor < 0
-                                ? 'badge-confirmed'
-                                : change.deltaMinor > 0
-                                ? 'badge-overdue'
-                                : ''
-                            }`}
-                          >
-                            {change.deltaMinor < 0 ? '-' : '+'}
-                            {formatCurrencyMinor(Math.abs(change.deltaMinor), event.currency)}
-                          </span>
-                          <span style={{ fontSize: '0.95rem', fontWeight: 700 }}>
-                            {formatCurrencyMinor(change.estimatedCostMinor, event.currency)}
-                          </span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Proposed Task Changes Preview */}
-              {result.proposedTaskChanges && result.proposedTaskChanges.length > 0 && (
-                <div>
-                  <h4 style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: '10px' }}>
-                    Proposed Task & Timeline Milestones ({result.proposedTaskChanges.length})
-                  </h4>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                    {result.proposedTaskChanges.map((tChange, idx) => (
-                      <div
-                        key={idx}
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'space-between',
-                          padding: '12px 16px',
-                          background: 'rgba(255, 255, 255, 0.03)',
-                          border: '1px solid var(--border-subtle)',
-                          borderRadius: '10px',
-                          flexWrap: 'wrap',
-                          gap: '10px',
-                        }}
-                      >
-                        <div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <strong style={{ fontSize: '0.9rem' }}>{tChange.title}</strong>
-                            <span className="badge badge-planned">
-                              {tChange.milestone}
-                            </span>
-                          </div>
-                          <p style={{ fontSize: '0.775rem', color: 'var(--text-secondary)', margin: '2px 0 0' }}>
-                            {tChange.description}
-                          </p>
-                        </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                            {tChange.daysBeforeEvent}d before
-                          </span>
-                          {tChange.deadline && (
-                            <span className="badge badge-pending">
-                              {tChange.deadline}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Tradeoffs List */}
-              {result.tradeoffs && result.tradeoffs.length > 0 && (
-                <div style={{ padding: '12px 16px', background: 'rgba(255, 255, 255, 0.02)', borderRadius: '10px' }}>
-                  <span style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-secondary)' }}>
-                    Strategic Trade-offs
-                  </span>
-                  <ul style={{ margin: '6px 0 0 16px', fontSize: '0.825rem', color: 'var(--text-secondary)' }}>
-                    {result.tradeoffs.map((to, idx) => (
-                      <li key={idx} style={{ marginBottom: '4px' }}>
-                        <strong>{to.item}:</strong> {to.change} — {to.reason}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
+              {/* Proposed Changes and Tradeoffs Preview */}
+              <CopilotDiffView
+                proposedExpenseChanges={result.proposedExpenseChanges}
+                proposedTaskChanges={result.proposedTaskChanges}
+                tradeoffs={result.tradeoffs}
+                currency={event.currency}
+              />
             </div>
           )}
         </div>

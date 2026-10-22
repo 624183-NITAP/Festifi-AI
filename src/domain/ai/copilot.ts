@@ -429,3 +429,129 @@ export function executeDeterministicCopilot(
     }
   }
 }
+
+export interface AppliedCopilotChanges {
+  updatedEvent?: Partial<EventDetails>;
+  updatedExpenses?: ExpenseItem[];
+  updatedTasks?: TimelineTask[];
+  summaryMessage: string;
+}
+
+/**
+ * Pure domain function to apply changes proposed by a CopilotResult.
+ * Handles expense additions/updates/removals, task additions/updates,
+ * event adjustments, and chronological deadline derivations.
+ */
+export function applyCopilotResult(
+  context: CopilotContext,
+  result: CopilotResult
+): AppliedCopilotChanges {
+  const { event, expenses, tasks = [] } = context;
+
+  let updatedExpenses: ExpenseItem[] | undefined = undefined;
+  let updatedTasks: TimelineTask[] | undefined = undefined;
+  let updatedEvent: Partial<EventDetails> | undefined = undefined;
+
+  // 1. Apply expense changes
+  if (result.proposedExpenseChanges && result.proposedExpenseChanges.length > 0) {
+    const expenseMap = new Map(expenses.map((e) => [e.id, e]));
+
+    for (const change of result.proposedExpenseChanges) {
+      if (change.action === 'remove' && change.id) {
+        expenseMap.delete(change.id);
+      } else if (change.action === 'update' && change.id) {
+        const existing = expenseMap.get(change.id);
+        if (existing) {
+          expenseMap.set(change.id, {
+            ...existing,
+            name: change.name || existing.name,
+            categoryId: change.categoryId || existing.categoryId,
+            estimatedCostMinor: Math.max(0, change.estimatedCostMinor),
+            notes: `${existing.notes || ''} [Copilot: ${change.rationale}]`.trim(),
+          });
+        }
+      } else if (change.action === 'add') {
+        const newId = `exp-copilot-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+        expenseMap.set(newId, {
+          id: newId,
+          categoryId: change.categoryId,
+          name: change.name,
+          estimatedCostMinor: Math.max(0, change.estimatedCostMinor),
+          actualCostMinor: null,
+          paidMinor: 0,
+          status: 'planned',
+          priority: 'must_have',
+          notes: `Copilot Recommendation: ${change.rationale}`,
+        });
+      }
+    }
+
+    updatedExpenses = Array.from(expenseMap.values());
+  }
+
+  // 2. Apply task changes
+  if (result.proposedTaskChanges && result.proposedTaskChanges.length > 0) {
+    const taskMap = new Map(tasks.map((t) => [t.id, t]));
+
+    for (const tChange of result.proposedTaskChanges) {
+      if (tChange.action === 'add') {
+        const newId = `task-copilot-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+        const deadline =
+          tChange.deadline ||
+          (isValidIsoDate(event.targetDate)
+            ? calculateDeadline(event.targetDate, tChange.daysBeforeEvent)
+            : event.targetDate);
+
+        taskMap.set(newId, {
+          id: newId,
+          title: tChange.title,
+          description: tChange.description,
+          category: tChange.category,
+          daysBeforeEvent: Math.max(0, tChange.daysBeforeEvent),
+          deadline,
+          completed: false,
+          completedAt: null,
+          priority: tChange.priority,
+          dependencies: [],
+          milestone: tChange.milestone,
+        });
+      } else if (tChange.action === 'update' && tChange.id) {
+        const existing = taskMap.get(tChange.id);
+        if (existing) {
+          const deadline =
+            tChange.deadline ||
+            (isValidIsoDate(event.targetDate)
+              ? calculateDeadline(event.targetDate, tChange.daysBeforeEvent)
+              : existing.deadline);
+
+          taskMap.set(tChange.id, {
+            ...existing,
+            title: tChange.title || existing.title,
+            description: tChange.description || existing.description,
+            daysBeforeEvent: Math.max(0, tChange.daysBeforeEvent),
+            deadline,
+          });
+        }
+      } else if (tChange.action === 'remove' && tChange.id) {
+        taskMap.delete(tChange.id);
+      }
+    }
+
+    updatedTasks = Array.from(taskMap.values());
+  }
+
+  // 3. Apply event changes
+  if (result.proposedEventChanges) {
+    updatedEvent = {
+      ...result.proposedEventChanges,
+      updatedAt: new Date().toISOString(),
+    };
+  }
+
+  return {
+    updatedEvent,
+    updatedExpenses,
+    updatedTasks,
+    summaryMessage: result.summary,
+  };
+}

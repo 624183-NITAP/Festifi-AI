@@ -17,6 +17,7 @@ import {
   ArrowRight,
 } from 'lucide-react';
 import { calculateBudgetSummary, formatCurrencyMinor } from '@/domain/budget';
+import { calculateEventReadiness } from '@/domain/readiness';
 import { daysBetween, formatDateReadable } from '@/domain/timeline';
 import { EventPlanState } from '@/domain/types';
 
@@ -26,30 +27,24 @@ interface HeroOverviewProps {
 }
 
 export const HeroOverview: React.FC<HeroOverviewProps> = ({ state, onNavigateTab }) => {
-  const { event, expenses, generatedIdeas } = state;
+  const { event, expenses, tasks, guests, vendors, generatedIdeas } = state;
   const budgetSummary = calculateBudgetSummary(event, expenses);
 
   const todayIso = new Date().toISOString().split('T')[0];
   const daysRemaining = daysBetween(todayIso, event.targetDate);
 
-  // Operational Readiness Calculation across Workflow Pillars
-  const totalTasks = state.tasks.length;
-  const completedTasks = state.tasks.filter((t) => t.completed).length;
+  const readiness = calculateEventReadiness(state, budgetSummary);
+  const readinessScore = readiness.overallScore;
+
+  const totalTasks = tasks.length;
+  const completedTasks = tasks.filter((t) => t.completed).length;
   const taskRate = totalTasks > 0 ? (completedTasks / totalTasks) * 100 : 0;
 
-  const budgetRate = budgetSummary.isOverBudget ? 40 : 100;
+  const totalGuests = (guests || []).length;
+  const respondedGuests = (guests || []).filter((g) => g.rsvpStatus !== 'pending').length;
 
-  const totalGuests = state.guests?.length || 0;
-  const respondedGuests = (state.guests || []).filter((g) => g.rsvpStatus !== 'pending').length;
-  const guestRate = totalGuests > 0 ? (respondedGuests / totalGuests) * 100 : 50;
-
-  const totalVendors = state.vendors.length;
-  const hiredVendors = state.vendors.filter((v) => v.status === 'hired').length;
-  const vendorRate = totalVendors > 0 ? (hiredVendors / totalVendors) * 100 : 50;
-
-  const readinessScore = Math.round(
-    taskRate * 0.3 + budgetRate * 0.3 + guestRate * 0.2 + vendorRate * 0.2
-  );
+  const totalVendors = vendors.length;
+  const hiredVendors = vendors.filter((v) => v.status === 'hired').length;
 
   return (
     <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>

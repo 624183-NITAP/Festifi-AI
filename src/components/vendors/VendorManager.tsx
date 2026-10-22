@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { Check, Copy, Mail, Plus, Send, ShieldCheck, Trash2, Users } from 'lucide-react';
 import { CATEGORY_NAMES, formatCurrencyMinor } from '@/domain/budget';
+import { generateDeterministicVendorInquiry } from '@/domain/vendors';
 import { BudgetCategory, EventDetails, VendorRecord, VendorStatus } from '@/domain/types';
 
 interface VendorManagerProps {
@@ -96,26 +97,10 @@ export const VendorManager: React.FC<VendorManagerProps> = ({
         throw new Error('API request failed');
       }
     } catch {
-      // Offline fallback: generate directly in client
-      const fallbackMsg = [
-        `Dear ${vendor.contactPerson || `${vendor.name} Team`},`,
-        ``,
-        `I am planning an upcoming ${event.type.replace('_', ' ')} titled "${event.title}" scheduled for ${event.targetDate} with an estimated ${event.guestCount} guests.`,
-        ``,
-        `We are currently shortlisting trusted partners for our ${CATEGORY_NAMES[vendor.category]} needs. We would love to request a formal quotation and inquire about your availability for this date.`,
-        vendor.notes ? `Specific notes:\n- ${vendor.notes}\n` : '',
-        `Could you kindly share your package inclusions, itemized pricing, and deposit terms?`,
-        ``,
-        `Warm regards,`,
-        `Event Planning Team — ${event.title}`,
-      ].filter(Boolean).join('\n');
-
-      setGeneratedMessage(fallbackMsg);
-      setSafetyTips([
-        'Request proof of commercial general liability insurance for venue compliance.',
-        'Confirm overtime hourly rates in writing before signing the contract.',
-        'Ensure cancellation policy explicitly addresses weather disruptions and forced rescheduling.',
-      ]);
+      // Offline fallback: generate using pure shared domain logic
+      const fallback = generateDeterministicVendorInquiry(event, vendor, vendor.notes);
+      setGeneratedMessage(fallback.inquiryMessage);
+      setSafetyTips(fallback.checklistTips);
     } finally {
       setIsGenerating(false);
     }

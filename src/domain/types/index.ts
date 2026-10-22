@@ -329,3 +329,5 @@ export interface EventPlanState {
   generatedIdeas: GeneratedEventPlan | null;
   copilotHistory?: Array<{ id: string; timestamp: string; prompt: string; actionType: CopilotActionType; summary: string }>;
 }
+
+export * from './guards';
