@@ -16,12 +16,14 @@ import {
 
 interface GuestFormModalProps {
   editingGuest: GuestRecord | null;
+  existingGuests?: GuestRecord[];
   onClose: () => void;
   onSave: (guest: Omit<GuestRecord, 'id'> | GuestRecord) => void;
 }
 
 export const GuestFormModal: React.FC<GuestFormModalProps> = ({
   editingGuest,
+  existingGuests = [],
   onClose,
   onSave,
 }) => {
@@ -39,16 +41,39 @@ export const GuestFormModal: React.FC<GuestFormModalProps> = ({
     e.preventDefault();
     setFormError(null);
 
-    if (!fullName.trim()) {
+    const trimmedName = fullName.trim();
+    if (!trimmedName) {
       setFormError('Guest name is required.');
       return;
+    }
+
+    const trimmedEmail = email.trim();
+    if (trimmedEmail) {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(trimmedEmail)) {
+        setFormError('Please enter a valid email address.');
+        return;
+      }
+
+      if (existingGuests && existingGuests.length > 0) {
+        const duplicate = existingGuests.find(
+          (g) =>
+            (!editingGuest || g.id !== editingGuest.id) &&
+            g.email &&
+            g.email.trim().toLowerCase() === trimmedEmail.toLowerCase()
+        );
+        if (duplicate) {
+          setFormError(`A guest with email "${trimmedEmail}" already exists (${duplicate.fullName}).`);
+          return;
+        }
+      }
     }
 
     if (editingGuest) {
       onSave({
         ...editingGuest,
-        fullName: fullName.trim(),
-        email: email.trim(),
+        fullName: trimmedName,
+        email: trimmedEmail,
         phone: phone.trim(),
         rsvpStatus,
         dietaryPreference: dietary,

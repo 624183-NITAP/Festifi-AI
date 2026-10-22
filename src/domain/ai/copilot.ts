@@ -457,12 +457,19 @@ export function applyCopilotResult(
     const expenseMap = new Map(expenses.map((e) => [e.id, e]));
 
     for (const change of result.proposedExpenseChanges) {
-      if (change.action === 'remove' && change.id) {
-        expenseMap.delete(change.id);
-      } else if (change.action === 'update' && change.id) {
-        const existing = expenseMap.get(change.id);
+      const targetId =
+        (change.id && expenseMap.has(change.id))
+          ? change.id
+          : Array.from(expenseMap.values()).find(
+              (e) => change.name && e.name.trim().toLowerCase() === change.name.trim().toLowerCase()
+            )?.id;
+
+      if (change.action === 'remove' && targetId) {
+        expenseMap.delete(targetId);
+      } else if (change.action === 'update' && targetId) {
+        const existing = expenseMap.get(targetId);
         if (existing) {
-          expenseMap.set(change.id, {
+          expenseMap.set(targetId, {
             ...existing,
             name: change.name || existing.name,
             categoryId: change.categoryId || existing.categoryId,
@@ -494,6 +501,13 @@ export function applyCopilotResult(
     const taskMap = new Map(tasks.map((t) => [t.id, t]));
 
     for (const tChange of result.proposedTaskChanges) {
+      const targetId =
+        (tChange.id && taskMap.has(tChange.id))
+          ? tChange.id
+          : Array.from(taskMap.values()).find(
+              (t) => tChange.title && t.title.trim().toLowerCase() === tChange.title.trim().toLowerCase()
+            )?.id;
+
       if (tChange.action === 'add') {
         const newId = `task-copilot-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
         const deadline =
@@ -515,8 +529,8 @@ export function applyCopilotResult(
           dependencies: [],
           milestone: tChange.milestone,
         });
-      } else if (tChange.action === 'update' && tChange.id) {
-        const existing = taskMap.get(tChange.id);
+      } else if (tChange.action === 'update' && targetId) {
+        const existing = taskMap.get(targetId);
         if (existing) {
           const deadline =
             tChange.deadline ||
@@ -524,7 +538,7 @@ export function applyCopilotResult(
               ? calculateDeadline(event.targetDate, tChange.daysBeforeEvent)
               : existing.deadline);
 
-          taskMap.set(tChange.id, {
+          taskMap.set(targetId, {
             ...existing,
             title: tChange.title || existing.title,
             description: tChange.description || existing.description,
@@ -532,8 +546,8 @@ export function applyCopilotResult(
             deadline,
           });
         }
-      } else if (tChange.action === 'remove' && tChange.id) {
-        taskMap.delete(tChange.id);
+      } else if (tChange.action === 'remove' && targetId) {
+        taskMap.delete(targetId);
       }
     }
 

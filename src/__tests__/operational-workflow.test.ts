@@ -138,4 +138,31 @@ describe('Operational Workflow — Guest & RSVP Management', () => {
     expect(DIETARY_LABELS.dairy_free).toBe('Dairy-Free / Lactose Intolerant');
     expect(DIETARY_LABELS.other).toBe('Special Request');
   });
+
+  it('detects duplicate emails case-insensitively across existing guest records', () => {
+    const existingGuests: GuestRecord[] = [
+      {
+        id: 'g-1',
+        fullName: 'Jane Doe',
+        email: 'jane.doe@example.com',
+        rsvpStatus: 'attending',
+        dietaryPreference: 'none',
+        plusOne: false,
+        invitationSent: true,
+        updatedAt: '2026-10-15T00:00:00.000Z',
+      },
+    ];
+
+    const isDuplicate = (email: string, excludeId?: string) => {
+      const trimmed = email.trim().toLowerCase();
+      return existingGuests.some(
+        (g) => (!excludeId || g.id !== excludeId) && g.email?.trim().toLowerCase() === trimmed
+      );
+    };
+
+    expect(isDuplicate('JANE.DOE@EXAMPLE.COM')).toBe(true);
+    expect(isDuplicate('jane.doe@example.com', 'g-1')).toBe(false); // same guest updating
+    expect(isDuplicate('john.smith@example.com')).toBe(false);
+  });
 });
+

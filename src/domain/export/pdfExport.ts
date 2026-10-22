@@ -336,9 +336,12 @@ export function renderGuestRequirements(ctx: PdfRenderContext, guests: GuestReco
   // Dietary Restrictions Table
   const dietaryItems = Object.entries(guestStats.dietaryBreakdown).filter(([, count]) => count > 0);
   if (dietaryItems.length > 0) {
+    const boxHeight = 20 + dietaryItems.length * 15;
+    ctx.ensureSpace(boxHeight + 14);
+
     doc.setFillColor(...colors.bgLight);
     doc.setDrawColor(...colors.slateBorder);
-    doc.roundedRect(margin, ctx.currentY, contentWidth, 20 + dietaryItems.length * 15, 4, 4, 'FD');
+    doc.roundedRect(margin, ctx.currentY, contentWidth, boxHeight, 4, 4, 'FD');
 
     doc.setFont(fonts.family, 'bold');
     doc.setFontSize(8);

@@ -177,4 +177,28 @@ describe('Operational Event Readiness Engine', () => {
     expect(readiness.statusLabel).toBe('Celebration Ready');
     expect(readiness.riskFactors).toHaveLength(0);
   });
+
+  it('detects and flags overdue incomplete milestones in risk factors', () => {
+    const overdueState: EventPlanState = {
+      ...baseState,
+      tasks: [
+        {
+          id: 't-overdue-1',
+          title: 'Secure Marquee Deposit',
+          description: 'Payment past due',
+          category: 'venue',
+          deadline: '2026-08-01', // Before reference date
+          daysBeforeEvent: 379,
+          completed: false,
+          priority: 'must_have',
+          dependencies: [],
+          milestone: '12 Months',
+        },
+      ],
+    };
+
+    const readiness = calculateEventReadiness(overdueState, undefined, '2026-10-01');
+    expect(readiness.riskFactors.some((r) => r.includes('past deadline and incomplete'))).toBe(true);
+  });
 });
+

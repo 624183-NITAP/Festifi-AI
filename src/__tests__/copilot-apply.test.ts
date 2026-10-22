@@ -168,4 +168,83 @@ describe('AI Copilot Mutation Engine (applyCopilotResult)', () => {
     expect(applied.updatedEvent?.contingencyPercentage).toBe(12);
     expect(applied.updatedEvent?.updatedAt).toBeDefined();
   });
+
+  it('resolves and applies expense updates and removals by item name when id is omitted by LLM', () => {
+    const copilotResult: CopilotResult = {
+      actionType: 'budget_reduction',
+      prompt: 'Trim ice sculptures and negotiate lodge fee',
+      summary: 'Adjusted decor and venue based on line item names.',
+      isLive: true,
+      providerName: 'Gemini 1.5 Flash',
+      proposedExpenseChanges: [
+        {
+          name: 'Forest Lodge',
+          categoryId: 'venue',
+          estimatedCostMinor: 850000,
+          deltaMinor: -150000,
+          action: 'update',
+          rationale: 'Negotiated winter weekday concession',
+        },
+        {
+          name: 'Custom Ice Sculptures',
+          categoryId: 'decor',
+          estimatedCostMinor: 0,
+          deltaMinor: -300000,
+          action: 'remove',
+          rationale: 'Pruned luxury non-essential',
+        },
+      ],
+    };
+
+    const applied = applyCopilotResult(
+      { event: initialEvent, expenses: initialExpenses, tasks: initialTasks },
+      copilotResult
+    );
+
+    expect(applied.updatedExpenses).toBeDefined();
+    expect(applied.updatedExpenses).toHaveLength(1);
+
+    const lodge = applied.updatedExpenses?.find((e) => e.id === 'exp-1');
+    expect(lodge).toBeDefined();
+    expect(lodge?.estimatedCostMinor).toBe(850000);
+    expect(lodge?.notes).toContain('Negotiated winter weekday concession');
+
+    const iceSculpture = applied.updatedExpenses?.find((e) => e.id === 'exp-2');
+    expect(iceSculpture).toBeUndefined();
+  });
+
+  it('resolves and applies task updates and removals by title when id is omitted by LLM', () => {
+    const copilotResult: CopilotResult = {
+      actionType: 'timeline_adjustment',
+      prompt: 'Reschedule venue contract and finalize milestones',
+      summary: 'Updated milestone deadlines by title.',
+      isLive: true,
+      providerName: 'Gemini 1.5 Flash',
+      proposedTaskChanges: [
+        {
+          title: 'Sign Venue Contract',
+          description: 'Confirm venue deposit',
+          milestone: '6 Months Before',
+          daysBeforeEvent: 160,
+          deadline: '2027-01-06',
+          category: 'venue',
+          priority: 'must_have',
+          action: 'update',
+          rationale: 'Moved earlier for insurance signoff',
+        },
+      ],
+    };
+
+    const applied = applyCopilotResult(
+      { event: initialEvent, expenses: initialExpenses, tasks: initialTasks },
+      copilotResult
+    );
+
+    expect(applied.updatedTasks).toBeDefined();
+    expect(applied.updatedTasks).toHaveLength(1);
+    expect(applied.updatedTasks?.[0].id).toBe('t-1');
+    expect(applied.updatedTasks?.[0].deadline).toBe('2027-01-06');
+    expect(applied.updatedTasks?.[0].daysBeforeEvent).toBe(160);
+  });
 });
+

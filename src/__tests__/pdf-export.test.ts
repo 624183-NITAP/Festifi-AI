@@ -188,4 +188,27 @@ describe('Client-Ready PDF Proposal Export Engine', () => {
     expect(doc).toBeDefined();
     expect(doc.getNumberOfPages()).toBe(1);
   });
+
+  it('renders complex dietary restrictions tables cleanly with page-boundary space allocation', () => {
+    const diverseGuests = [
+      { id: 'g-1', fullName: 'Guest 1', email: 'g1@test.com', rsvpStatus: 'attending' as const, dietaryPreference: 'vegan' as const, plusOne: false, invitationSent: true, updatedAt: '' },
+      { id: 'g-2', fullName: 'Guest 2', email: 'g2@test.com', rsvpStatus: 'attending' as const, dietaryPreference: 'vegetarian' as const, plusOne: false, invitationSent: true, updatedAt: '' },
+      { id: 'g-3', fullName: 'Guest 3', email: 'g3@test.com', rsvpStatus: 'attending' as const, dietaryPreference: 'gluten_free' as const, plusOne: false, invitationSent: true, updatedAt: '' },
+      { id: 'g-4', fullName: 'Guest 4', email: 'g4@test.com', rsvpStatus: 'attending' as const, dietaryPreference: 'nut_allergy' as const, plusOne: false, invitationSent: true, updatedAt: '' },
+      { id: 'g-5', fullName: 'Guest 5', email: 'g5@test.com', rsvpStatus: 'attending' as const, dietaryPreference: 'halal' as const, plusOne: false, invitationSent: true, updatedAt: '' },
+      { id: 'g-6', fullName: 'Guest 6', email: 'g6@test.com', rsvpStatus: 'attending' as const, dietaryPreference: 'kosher' as const, plusOne: false, invitationSent: true, updatedAt: '' },
+      { id: 'g-7', fullName: 'Guest 7', email: 'g7@test.com', rsvpStatus: 'attending' as const, dietaryPreference: 'dairy_free' as const, plusOne: false, invitationSent: true, updatedAt: '' },
+      { id: 'g-8', fullName: 'Guest 8', email: 'g8@test.com', rsvpStatus: 'attending' as const, dietaryPreference: 'other' as const, dietaryNotes: 'Allium-free', plusOne: false, invitationSent: true, updatedAt: '' },
+    ];
+
+    const stateWithManyDiets: EventPlanState = {
+      ...mockState,
+      guests: diverseGuests,
+    };
+
+    const doc = generateClientProposalPdf(stateWithManyDiets);
+    expect(doc).toBeDefined();
+    expect(doc.getNumberOfPages()).toBeGreaterThanOrEqual(1);
+    expect(doc.output().startsWith('%PDF-')).toBe(true);
+  });
 });

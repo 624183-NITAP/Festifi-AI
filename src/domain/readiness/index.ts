@@ -35,7 +35,8 @@ export interface EventReadiness {
  */
 export function calculateEventReadiness(
   state: EventPlanState,
-  precalculatedSummary?: BudgetSummary
+  precalculatedSummary?: BudgetSummary,
+  referenceDateIso?: string
 ): EventReadiness {
   const summary = precalculatedSummary ?? calculateBudgetSummary(state.event, state.expenses);
 
@@ -95,6 +96,16 @@ export function calculateEventReadiness(
   }
   if (totalVendors > 0 && hiredVendors === 0) {
     riskFactors.push('No primary vendor contracts have been marked as hired.');
+  }
+
+  const todayIso = referenceDateIso || new Date().toISOString().split('T')[0];
+  const overdueCount = state.tasks.filter(
+    (t) => !t.completed && t.deadline && t.deadline < todayIso
+  ).length;
+  if (overdueCount > 0) {
+    riskFactors.push(
+      `${overdueCount} timeline milestone${overdueCount === 1 ? ' is' : 's are'} past deadline and incomplete.`
+    );
   }
 
   return {

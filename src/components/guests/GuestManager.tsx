@@ -358,6 +358,7 @@ export const GuestManager: React.FC<GuestManagerProps> = ({
       {showAddModal && (
         <GuestFormModal
           editingGuest={editingGuest}
+          existingGuests={guests}
           onClose={() => setShowAddModal(false)}
           onSave={handleSaveGuest}
         />
